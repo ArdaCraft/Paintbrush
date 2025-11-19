@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "space.ajcool.paintbrush.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [],
+  "client": [
+    "client.PlayerInventoryMixin",
+    "client.ItemRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

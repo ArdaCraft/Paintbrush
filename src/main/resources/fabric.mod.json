@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"id": "paintbrush",
+	"version": "${version}",
+	"name": "Paintbrush",
+	"description": "Adds a paintbrush to paint over blocks with a selected material.",
+	"authors": [
+		"Ajcool"
+	],
+	"contact": {
+		"homepage": "https://ajcool.space",
+		"sources": "https://bitbucket.org/Ajcool_/paintbrush/src"
+	},
+	"license": "CC-BY 4.0",
+	"icon": "assets/paintbrush/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"space.ajcool.paintbrush.Paintbrush"
+		],
+		"client": [
+			"space.ajcool.paintbrush.PaintbrushClient"
+		]
+	},
+	"mixins": [
+		"paintbrush.mixins.json"
+	],
+	"accessWidener": "paintbrush.accesswidener",
+	"depends": {
+		"fabricloader": ">=0.14.21",
+		"minecraft": "~1.20.1",
+		"java": ">=17",
+		"fabric-api": "*",
+		"conquest": "*",
+		"worldedit": "*"
+	}
+}
