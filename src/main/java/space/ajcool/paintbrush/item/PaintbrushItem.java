@@ -25,6 +25,7 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import space.ajcool.paintbrush.Paintbrush;
+import space.ajcool.paintbrush.tokenizer.TokenProcessor;
 
 import java.util.*;
 
@@ -43,84 +44,31 @@ public class PaintbrushItem extends Item
     }
 
     /**
-     * Identify the longest common substring in an array of strings
-     * @param strings the input array from which to extract the longest common substring
-     * @return the longest common substring
-     */
-    public static String longestCommonSubstring(List<String> strings) {
-        if (strings == null || strings.isEmpty()) return "";
-
-        // pick the shortest string to reduce work
-        String shortest = strings.stream()
-                .min(Comparator.comparingInt(String::length))
-                .orElse("");
-
-        int n = shortest.length();
-
-        for (int len = n; len > 0; len--) {
-            for (int i = 0; i + len <= n; i++) {
-                String candidate = shortest.substring(i, i + len);
-
-                boolean allContain = true;
-                for (String s : strings) {
-                    if (!s.contains(candidate)) {
-                        allContain = false;
-                        break;
-                    }
-                }
-
-                if (allContain) {
-                    return candidate;
-                }
-            }
-        }
-
-        return "";
-    }
-
-    private List<Pair<String, Block>> normalizeBlockIds(Family<Block> blockFamily){
-
-        // Extract the translation keys for each block
-        List<String> blockFamilyNames = blockFamily.getMembers().stream()
-                .filter(block -> !Registries.BLOCK.getId(block).toString().equals("minecraft:air"))
-                .map(block -> Text.translatable(block.getTranslationKey()).getString())
-                .toList();
-
-        String commonIdentifier = longestCommonSubstring(blockFamilyNames);
-
-        return blockFamily.getMembers().stream()
-                .map(block -> {
-                    String blockName = Text.translatable(block.getTranslationKey()).getString();
-                    return new Pair<>(blockName.replaceAll(commonIdentifier, ""), block);
-                })
-                .toList();
-    }
-
-
-    /**
      * Given a target block and a paint family, filter down the family and extract the best candidates matching the
      * target block. This method will try to return a single result
      * @param targetBlockState the reference block from which to find a counterpart in the family
      * @param paintFamily the paint family from which to find a counterpart
      * @return a list of matching blocks for the given target.
      */
-    private List<Block> filterBlockCandidatesFromPaintFamily(BlockState targetBlockState, Family<Block> paintFamily)
+    private List<Block> filterBlockCandidatesFromPaintFamily(BlockState targetBlockState, Family<Block> paintFamily, boolean debugOut)
     {
+
         List<Block> results;
-        List<Pair<String, Block>> targetBlockCandidates = normalizeBlockIds(FamilyRegistry.BLOCKS.getFamily(targetBlockState.getBlock()));
-        List<Pair<String, Block>> paintCandidates = normalizeBlockIds(paintFamily);
+        final TokenProcessor tokenProcessor = new TokenProcessor();
 
-        String candidateIdentifier = targetBlockCandidates.stream()
-                .filter(p -> Registries.BLOCK.getId(targetBlockState.getBlock())
-                        .equals(Registries.BLOCK.getId(p.getRight())))
-                .map(Pair::getLeft)
-                .findFirst()
-                .orElse("");
-
-        results = paintCandidates.stream()
-                .filter(p -> p.getLeft().equals(candidateIdentifier))
-                .map(Pair::getRight)
+        Pair<Block, List<String>> tokenizedTargetBlock = tokenProcessor.tokenizeBlock(targetBlockState.getBlock());
+        List<Pair<Block, List<String>>> tokenizedPaintFamilyBlocks = paintFamily.getMembers().stream()
+                .map(tokenProcessor::tokenizeBlock)
                 .toList();
+
+        results = tokenizedPaintFamilyBlocks.stream()
+                .filter(familyBlock -> tokenProcessor.tokenizedBlocksMatch(familyBlock, tokenizedTargetBlock))
+                .map(Pair::getLeft)
+                .toList();
+
+        if (debugOut){
+            tokenProcessor.outputDebug(tokenizedTargetBlock, tokenizedPaintFamilyBlocks);
+        }
 
         // Fallback - legacy matching algorithm
         if (results.isEmpty()){
@@ -288,12 +236,14 @@ public class PaintbrushItem extends Item
                 else
                 {
                     var layerMismatch = false;
+                    var tokenizerDebugOutput = paintNbt.getString("debug");
+                    var tokenizerDebugEnabled = tokenizerDebugOutput != null && !tokenizerDebugOutput.isBlank();
 
                     /*
                      Identify a list of block candidates for painting in a block family, then isolate a prime candidate
                      with priority conquest>other RP>minecraft
                      */
-                    List<Block> matchingBlocks = filterBlockCandidatesFromPaintFamily(targetBlockState, paintFamily);
+                    List<Block> matchingBlocks = filterBlockCandidatesFromPaintFamily(targetBlockState, paintFamily, tokenizerDebugEnabled);
 
                     Block matchingBlock = null;
 

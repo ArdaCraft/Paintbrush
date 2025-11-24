@@ -16,6 +16,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
@@ -25,12 +26,15 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtHelper;
 import net.minecraft.nbt.NbtString;
 import net.minecraft.registry.Registries;
+import net.minecraft.resource.ResourceType;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import space.ajcool.paintbrush.tokenizer.TokenLoader;
+import space.ajcool.paintbrush.tokenizer.TokenReloadListener;
 
 import java.util.Iterator;
 
@@ -61,6 +65,10 @@ public class PaintbrushClient implements ClientModInitializer
             configureClientCommand("paintbrush", dispatcher);
             configureClientCommand("pb", dispatcher);
         });
+
+        // Token management
+        ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES)
+                .registerReloadListener(new TokenReloadListener());
 	}
 
 	private ActionResult handlePaintbrushInteraction(PlayerEntity player, ItemStack itemStack, BlockPos pos)
@@ -148,87 +156,36 @@ public class PaintbrushClient implements ClientModInitializer
     {
         dispatcher.register(ClientCommandManager.literal(commandName)
                 .then(ClientCommandManager.literal("debug")
-                        .executes(context -> outputDebugConfiguration(false, context))
-                        .then(ClientCommandManager.literal("full")
-                                .executes(context -> outputDebugConfiguration(true, context))))
+                        .executes(this::toggleTokenizerDebugOutput))
         );
     }
 
-    private int outputDebugConfiguration(boolean fullOutput, CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    private int toggleTokenizerDebugOutput(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
     {
 
         var player = context.getSource().getPlayer();
 
         if (player != null)
         {
-            Iterator<Family<Block>> iterator = FamilyRegistry.BLOCKS.values().iterator();
+            var itemStack = player.getMainHandStack();
 
-            var message = Text.empty()
-                    .append(Text.literal("Scanning for potential erroneous families configuration... ").formatted(Formatting.DARK_AQUA))
-                    .append(Text.literal("This can take a long time").formatted(Formatting.GRAY));
-            player.sendMessage(message);
+            // Set internal NBT for block material and state
+            var paintNbt = itemStack.getOrCreateSubNbt("paintbrush");
 
-            var errorCount = 0;
+            if (!paintNbt.contains("debug")) {
+                paintNbt.put("debug", NbtString.of("true"));
 
-            while (iterator.hasNext()) {
-
-                Family<Block> family = iterator.next();
-                Block familyRoot = family.getRoot();
-                String familyRootName = Text.translatable(familyRoot.getTranslationKey()).getString();
-                boolean hasConfigError = false;
-
-                for (Block block : family.getMembers()) {
-
-                    String memberName = Text.translatable(block.getTranslationKey()).getString();
-
-                    if (!memberName.startsWith(familyRootName) && !memberName.contains(familyRootName) ) {
-                        hasConfigError = true;
-                        break;
-                    }
-                }
-
-                if (hasConfigError || fullOutput) {
-
-                    StringBuilder builder = new StringBuilder("\tFamily \"")
-                            .append(familyRoot.getTranslationKey())
-                            .append("\" \"")
-                            .append(familyRootName);
-
-                    if (hasConfigError) {
-                        errorCount++;
-                        builder.append("\" Doesn't share its root with its members: \n");
-                    } else
-                        builder.append("\"\n");
-
-                    for (Block block : family.getMembers()) {
-
-                        String memberName = Text.translatable(block.getTranslationKey()).getString();
-                        builder.append("\"")
-                                .append(block.getTranslationKey())
-                                .append("\": \"")
-                                .append(memberName)
-                                .append("\",\n");
-                    }
-
-                    if (hasConfigError)
-                        LOGGER.warn(builder.toString());
-                    else
-                        LOGGER.info(builder.toString());
-                }
-            }
-
-            if (errorCount > 0) {
-                message = Text.empty()
-                        .append(Text.literal("Scanning complete.").formatted(Formatting.DARK_AQUA))
-                        .append(Text.literal("Found " + errorCount + " errors.").formatted(Formatting.RED))
-                        .append(Text.literal("Check client log for additionnal information.").formatted(Formatting.GRAY));
+                var message = Text.empty()
+                        .append(Text.literal("Debug output enabled").formatted(Formatting.DARK_AQUA));
+                player.sendMessage(message);
             } else {
 
-                message = Text.empty()
-                        .append(Text.literal("Scanning complete.").formatted(Formatting.DARK_AQUA))
-                        .append(Text.literal("No errors found.").formatted(Formatting.GRAY));
+                paintNbt.remove("debug");
+
+                var message = Text.empty()
+                        .append(Text.literal("Debug output disabled").formatted(Formatting.RED));
+                player.sendMessage(message);
             }
-            player.sendMessage(message);
         }
 
         return Command.SINGLE_SUCCESS;
