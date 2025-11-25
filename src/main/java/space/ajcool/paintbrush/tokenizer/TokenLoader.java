@@ -43,7 +43,6 @@ public final class TokenLoader {
                 data.reserved_names.sort((s1, s2) -> Integer.compare(s2.length(), s1.length()));
 
                 TokenRegistry.setTokens(data.reserved_names,data.tokens);
-
                 LOGGER.info("Paintbrush - Initialized {} tokens and {} reserved tokens", data.tokens.size(), data.reserved_names.size());
 
             } catch (IOException e) {

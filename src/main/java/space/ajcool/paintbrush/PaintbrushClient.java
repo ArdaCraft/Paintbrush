@@ -34,6 +34,7 @@ import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import space.ajcool.paintbrush.tokenizer.TokenLoader;
+import space.ajcool.paintbrush.tokenizer.TokenRegistry;
 import space.ajcool.paintbrush.tokenizer.TokenReloadListener;
 
 import java.util.Iterator;
@@ -156,8 +157,35 @@ public class PaintbrushClient implements ClientModInitializer
     {
         dispatcher.register(ClientCommandManager.literal(commandName)
                 .then(ClientCommandManager.literal("debug")
-                        .executes(this::toggleTokenizerDebugOutput))
+                        .executes(this::toggleTokenizerDebugOutput)
+                    .then(ClientCommandManager.literal("showTokens")
+                            .executes(this::showLoadedTokens)))
         );
+    }
+
+    private int showLoadedTokens(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    {
+        StringBuilder builder = new StringBuilder("Paintbrush - Reserved names :\n");
+
+        for (String reserved : TokenRegistry.RESERVED_TOKENS)
+        {
+            builder.append(reserved)
+                    .append("\n");
+        }
+
+        LOGGER.info(builder.toString());
+
+        builder = new StringBuilder("Paintbrush - Tokens :\n");
+
+        for (String token : TokenRegistry.TOKENS)
+        {
+            builder.append(token)
+                    .append("\n");
+        }
+
+        LOGGER.info(builder.toString());
+
+        return Command.SINGLE_SUCCESS;
     }
 
     private int toggleTokenizerDebugOutput(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException

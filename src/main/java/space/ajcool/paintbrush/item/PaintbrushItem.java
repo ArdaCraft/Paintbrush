@@ -343,6 +343,16 @@ public class PaintbrushItem extends Item
             }
 
             if (paintBlockState == null) continue;
+            else
+            {
+                // Copy target state to paint block
+                for (Property<?> property : targetBlockState.getProperties()) {
+                    if (paintBlockState.contains(property)) {
+                        paintBlockState = paintBlockState.with((Property) property, targetBlockState.get(property));
+                    }
+                }
+            }
+
             blockStates.put(pos, paintBlockState);
         }
 

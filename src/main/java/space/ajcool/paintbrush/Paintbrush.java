@@ -228,7 +228,9 @@ public class Paintbrush implements ModInitializer
                         .then(CommandManager.argument("value", IntegerArgumentType.integer())
                                 .executes(this::setBrushSize)))
                 .then(CommandManager.literal("debug")
-                        .executes(ctx -> 1))
+                        .executes(ctx -> 1)
+                    .then(CommandManager.literal("showTokens")
+                            .executes(ctx -> 1)))
         );
     }
 

@@ -59,6 +59,5 @@ public class TokenProcessor {
                     .append("]\n");
         }
         Paintbrush.LOGGER.info(builder.toString());
-
     }
 }

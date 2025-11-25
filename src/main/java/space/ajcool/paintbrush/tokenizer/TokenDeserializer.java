@@ -21,8 +21,7 @@ public class TokenDeserializer implements JsonDeserializer<TokenLoader.TokenData
 
         TokenLoader.TokenData data = new TokenLoader.TokenData();
         data.reserved_names = expandAndSort(obj.getAsJsonArray("reserved_names"));
-        data.tokens = context.deserialize(obj.get("tokens"),
-                new TypeToken<List<String>>() {}.getType());
+        data.tokens = expandAndSort(obj.getAsJsonArray("tokens"));
 
         return data;
     }
@@ -31,7 +30,7 @@ public class TokenDeserializer implements JsonDeserializer<TokenLoader.TokenData
         List<String> result = new ArrayList<>();
 
         for (JsonElement el : arr) {
-            String s = el.getAsString();
+            String s = el.getAsString().toLowerCase();
 
             Matcher m = OPTIONAL_PATTERN.matcher(s);
 
@@ -44,7 +43,7 @@ public class TokenDeserializer implements JsonDeserializer<TokenLoader.TokenData
                 String singular = (before + after).trim();
 
                 // plural (insert content normally)
-                String plural   = (before + inner + after).trim();
+                String plural = (before + inner + after).trim();
 
                 result.add(singular);
                 result.add(plural);
