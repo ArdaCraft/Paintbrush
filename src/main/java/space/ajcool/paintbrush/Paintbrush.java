@@ -46,9 +46,7 @@ import space.ajcool.paintbrush.item.PaintKnifeItem;
 import space.ajcool.paintbrush.item.PaintbrushItem;
 import space.ajcool.paintbrush.item.TomatoItem;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Paintbrush implements ModInitializer
@@ -229,6 +227,10 @@ public class Paintbrush implements ModInitializer
                 .then(CommandManager.literal("size")
                         .then(CommandManager.argument("value", IntegerArgumentType.integer())
                                 .executes(this::setBrushSize)))
+                .then(CommandManager.literal("debug")
+                        .executes(ctx -> 1)
+                    .then(CommandManager.literal("showTokens")
+                            .executes(ctx -> 1)))
         );
     }
 

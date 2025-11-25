@@ -1,13 +1,23 @@
 package space.ajcool.paintbrush;
 
+import com.conquestrefabricated.core.item.family.Family;
 import com.conquestrefabricated.core.item.family.FamilyRegistry;
+import com.mojang.brigadier.Command;
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.render.entity.FlyingItemEntityRenderer;
@@ -16,15 +26,20 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtHelper;
 import net.minecraft.nbt.NbtString;
 import net.minecraft.registry.Registries;
+import net.minecraft.resource.ResourceType;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import space.ajcool.paintbrush.tokenizer.TokenLoader;
+import space.ajcool.paintbrush.tokenizer.TokenRegistry;
+import space.ajcool.paintbrush.tokenizer.TokenReloadListener;
 
-import static space.ajcool.paintbrush.Paintbrush.PAINTBRUSH_ITEM;
-import static space.ajcool.paintbrush.Paintbrush.PAINT_KNIFE_ITEM;
+import java.util.Iterator;
+
+import static space.ajcool.paintbrush.Paintbrush.*;
 import static space.ajcool.paintbrush.item.PaintKnifeItem.changeBlockLayer;
 
 @Environment(EnvType.CLIENT)
@@ -45,6 +60,16 @@ public class PaintbrushClient implements ClientModInitializer
 
 			return ActionResult.PASS;
 		});
+
+        // Registering client side commands
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+            configureClientCommand("paintbrush", dispatcher);
+            configureClientCommand("pb", dispatcher);
+        });
+
+        // Token management
+        ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES)
+                .registerReloadListener(new TokenReloadListener());
 	}
 
 	private ActionResult handlePaintbrushInteraction(PlayerEntity player, ItemStack itemStack, BlockPos pos)
@@ -127,4 +152,70 @@ public class PaintbrushClient implements ClientModInitializer
 
 		return ActionResult.FAIL;
 	}
+
+    private void configureClientCommand(String commandName, CommandDispatcher<FabricClientCommandSource> dispatcher)
+    {
+        dispatcher.register(ClientCommandManager.literal(commandName)
+                .then(ClientCommandManager.literal("debug")
+                        .executes(this::toggleTokenizerDebugOutput)
+                    .then(ClientCommandManager.literal("showTokens")
+                            .executes(this::showLoadedTokens)))
+        );
+    }
+
+    private int showLoadedTokens(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    {
+        StringBuilder builder = new StringBuilder("Paintbrush - Reserved names :\n");
+
+        for (String reserved : TokenRegistry.RESERVED_TOKENS)
+        {
+            builder.append(reserved)
+                    .append("\n");
+        }
+
+        LOGGER.info(builder.toString());
+
+        builder = new StringBuilder("Paintbrush - Tokens :\n");
+
+        for (String token : TokenRegistry.TOKENS)
+        {
+            builder.append(token)
+                    .append("\n");
+        }
+
+        LOGGER.info(builder.toString());
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private int toggleTokenizerDebugOutput(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    {
+
+        var player = context.getSource().getPlayer();
+
+        if (player != null)
+        {
+            var itemStack = player.getMainHandStack();
+
+            // Set internal NBT for block material and state
+            var paintNbt = itemStack.getOrCreateSubNbt("paintbrush");
+
+            if (!paintNbt.contains("debug")) {
+                paintNbt.put("debug", NbtString.of("true"));
+
+                var message = Text.empty()
+                        .append(Text.literal("Debug output enabled").formatted(Formatting.DARK_AQUA));
+                player.sendMessage(message);
+            } else {
+
+                paintNbt.remove("debug");
+
+                var message = Text.empty()
+                        .append(Text.literal("Debug output disabled").formatted(Formatting.RED));
+                player.sendMessage(message);
+            }
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
 }

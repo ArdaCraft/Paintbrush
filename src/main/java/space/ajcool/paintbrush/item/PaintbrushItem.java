@@ -25,6 +25,7 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import space.ajcool.paintbrush.Paintbrush;
+import space.ajcool.paintbrush.tokenizer.TokenProcessor;
 
 import java.util.*;
 
@@ -49,28 +50,57 @@ public class PaintbrushItem extends Item
      * @param paintFamily the paint family from which to find a counterpart
      * @return a list of matching blocks for the given target.
      */
-    private List<Block> filterBlockCandidatesFromPaintFamily(BlockState targetBlockState, Family<Block> paintFamily)
+    private List<Block> filterBlockCandidatesFromPaintFamily(BlockState targetBlockState, Family<Block> paintFamily, boolean debugOut)
     {
 
+        List<Block> results;
+        final TokenProcessor tokenProcessor = new TokenProcessor();
+
+        Pair<Block, List<String>> tokenizedTargetBlock = tokenProcessor.tokenizeBlock(targetBlockState.getBlock());
+        List<Pair<Block, List<String>>> tokenizedPaintFamilyBlocks = paintFamily.getMembers().stream()
+                .map(tokenProcessor::tokenizeBlock)
+                .toList();
+
+        results = tokenizedPaintFamilyBlocks.stream()
+                .filter(familyBlock -> tokenProcessor.tokenizedBlocksMatch(familyBlock, tokenizedTargetBlock))
+                .map(Pair::getLeft)
+                .toList();
+
+        if (debugOut){
+            tokenProcessor.outputDebug(tokenizedTargetBlock, tokenizedPaintFamilyBlocks);
+        }
+
+        // Fallback - legacy matching algorithm
+        if (results.isEmpty()){
+
+            Block matchingBlock = filterSingleBlockCandidateFromPaintFamily(targetBlockState, paintFamily);
+            if (matchingBlock != null)
+            {
+                results = new ArrayList<>();
+                results.add(matchingBlock);
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Legacy search by token. Identifies a matching block by splitting its id and comparing to the target family members
+     * @param targetBlockState the block to paint
+     * @param paintFamily the paint family from which to identify a paint candidate
+     * @return the matching block or null
+     */
+    private Block filterSingleBlockCandidateFromPaintFamily(BlockState targetBlockState, Family<Block> paintFamily) {
         var targetBlockId = ConquestDisambiguation(Registries.BLOCK.getId(targetBlockState.getBlock()).toString());
+        var idParts = targetBlockId.split("_");
 
-        var targetBlockIdSplit = targetBlockId.split(":");
-        var idParts = targetBlockIdSplit[1].split("_");
-
-        var layerMismatch = false;
-
-        Set<Block> matches = new HashSet<>();
-        List<Block> filteredFamilyMembers = paintFamily.getMembers();
+        Block matchingBlock = null;
 
         // Operational Steps
         // 1. Split the material string by underscores
         // 2. Starting from the end, check for matches between different block families
-        // 3. If a match is found, add it to the return list
-        // 4. Iterate on the filtered down list
+        // 3. If a match is found, copy its properties, account for edge-cases, and set the new block state
         for (int i = idParts.length - 1; i >= 0; i--) {
-
-            boolean newAddition = false;
-
             StringBuilder stringBuilder = new StringBuilder();
             for (int j = i; j < idParts.length; j++) {
                 stringBuilder.append("_").append(idParts[j]);
@@ -81,62 +111,45 @@ public class PaintbrushItem extends Item
             // We want to prioritize conquest blocks if two blocks have the same ending type.
             // ie. minecraft:...cobble_slab & conquest:...cobble_slab
             // The conquest version supports layers, the minecraft version does not.
-            for (Block paintFamilyMember : filteredFamilyMembers) {
+            var conquestMatches = 0;
+            for (Block paintFamilyMember : paintFamily.getMembers()) {
                 var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
-                if (ConquestDisambiguation(rawMemberId).endsWith(endMatch))
-                {
-                    matches.add(paintFamilyMember);
-                    newAddition = true;
-                }
+                if (rawMemberId.startsWith("minecraft")) continue;
+                if (ConquestDisambiguation(rawMemberId).endsWith(endMatch)) conquestMatches += 1;
             }
 
-            if (newAddition)
-            {
-                filteredFamilyMembers = new ArrayList<>(matches);
-                matches.clear();
+            var minecraftMatches = 0;
+            for (Block paintFamilyMember : paintFamily.getMembers()) {
+                var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
+                if (rawMemberId.startsWith("conquest")) continue;
+                if (ConquestDisambiguation(rawMemberId).endsWith(endMatch)) minecraftMatches += 1;
             }
-            else break;
-        }
 
-        // If there are more than one result, filter run the filter forward
-        // 1. Starting from the beginning, check for matches between different block families
-        // 2. If a match is found, add it to the return list
-        // 3. Iterate on the filtered down list
-        if (filteredFamilyMembers.size() > 1)
-        {
-            for (int i = 0; i < idParts.length - 1; i++)
-            {
-                boolean newAddition = false;
+            // If we haven't narrowed down our block list, we want to move on to search with a more specific tag
+            if (conquestMatches != 1 && minecraftMatches != 1) continue;
 
-                StringBuilder stringBuilder = new StringBuilder();
-                for (int j = 0; j < i+1; j++) {
-                    stringBuilder.append(idParts[j]).append(("_"));
-                }
-
-                var startMatch = stringBuilder.toString();
-
-                for (Block paintFamilyMember : filteredFamilyMembers) {
+            // Prioritize conquest, check for a minecraft block otherwise.
+            if (conquestMatches == 1) {
+                for (Block paintFamilyMember : paintFamily.getMembers()) {
                     var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
-
-                    var rawMemberIdSplit = ConquestDisambiguation(rawMemberId).split(":");
-
-                    if (rawMemberIdSplit[1].startsWith(startMatch))
-                    {
-                        matches.add(paintFamilyMember);
-                        newAddition = true;
-                    }
+                    if (rawMemberId.startsWith("minecraft")) continue;
+                    if (!ConquestDisambiguation(rawMemberId).endsWith(endMatch)) continue;
+                    matchingBlock = paintFamilyMember;
                 }
-
-                if (newAddition)
-                {
-                    filteredFamilyMembers = new ArrayList<>(matches);
-                    matches.clear();
+            } else {
+                for (Block paintFamilyMember : paintFamily.getMembers()) {
+                    var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
+                    if (rawMemberId.startsWith("conquest")) continue;
+                    if (!ConquestDisambiguation(rawMemberId).endsWith(endMatch)) continue;
+                    matchingBlock = paintFamilyMember;
                 }
-                else break;
             }
+
+            // If we for some reason still fail to find a block, break out of this loop.
+            if (matchingBlock == null) break;
         }
 
-        return filteredFamilyMembers;
+        return matchingBlock;
     }
 
     @Override
@@ -223,13 +236,19 @@ public class PaintbrushItem extends Item
                 else
                 {
                     var layerMismatch = false;
+                    var tokenizerDebugOutput = paintNbt.getString("debug");
+                    var tokenizerDebugEnabled = tokenizerDebugOutput != null && !tokenizerDebugOutput.isBlank();
 
                     /*
                      Identify a list of block candidates for painting in a block family, then isolate a prime candidate
                      with priority conquest>other RP>minecraft
                      */
-                    List<Block> matchingBlocks = filterBlockCandidatesFromPaintFamily(targetBlockState, paintFamily);
-                    Block matchingBlock = identifyBlockCandidate(matchingBlocks);
+                    List<Block> matchingBlocks = filterBlockCandidatesFromPaintFamily(targetBlockState, paintFamily, tokenizerDebugEnabled);
+
+                    Block matchingBlock = null;
+
+                    if (matchingBlocks.size() == 1) matchingBlock = matchingBlocks.get(0);
+
 
                     // If at least a conquest block or a minecraft block has been found proceed with setup
                     if (matchingBlock != null) {
@@ -324,6 +343,16 @@ public class PaintbrushItem extends Item
             }
 
             if (paintBlockState == null) continue;
+            else
+            {
+                // Copy target state to paint block
+                for (Property<?> property : targetBlockState.getProperties()) {
+                    if (paintBlockState.contains(property)) {
+                        paintBlockState = paintBlockState.with((Property) property, targetBlockState.get(property));
+                    }
+                }
+            }
+
             blockStates.put(pos, paintBlockState);
         }
 
@@ -358,48 +387,6 @@ public class PaintbrushItem extends Item
         player.playSound(SoundEvents.BLOCK_SLIME_BLOCK_PLACE, SoundCategory.BLOCKS, .2F, 1.0F);
 
         return ActionResult.CONSUME;
-    }
-
-    /**
-     * Identifies a block candidate for painting given a list of blocks. Will prioritize conquest blocks over other
-     * resource packs mods, otherwise defaults to minecraft block
-     * @param matchingBlocks a list of potential candidate
-     * @return the extracted block candidate
-     */
-    private Block identifyBlockCandidate(List<Block> matchingBlocks) {
-
-        // Extract matching minecraft blocks
-        List<Block> matchingMinecraftBlocks = matchingBlocks.stream()
-                .filter(block -> Registries.BLOCK.getId(block).toString().startsWith("minecraft"))
-                .toList();
-
-        // Extract matching conquest blocks
-        List<Block> matchingConquestBlocks = matchingBlocks.stream()
-                .filter(block -> Registries.BLOCK.getId(block).toString().startsWith("conquest"))
-                .toList();
-
-        // Extract matching blocks from other sources
-        List<Block> matchingOtherBlocks = matchingBlocks.stream()
-                .filter(block -> !Registries.BLOCK.getId(block).toString().startsWith("conquest") &&
-                        !Registries.BLOCK.getId(block).toString().startsWith("minecraft"))
-                .toList();
-
-
-        Block matchingBlock;
-
-        /*
-            Prioritize conquest,
-            else check for another resource pack block
-            otherwise check for a minecraft block.
-         */
-        if (matchingConquestBlocks.size() == 1)
-            matchingBlock = matchingConquestBlocks.get(0);
-        else if (matchingOtherBlocks.size() == 1)
-            matchingBlock = matchingOtherBlocks.get(0);
-        else
-            matchingBlock = matchingMinecraftBlocks.get(0);
-
-        return  matchingBlock;
     }
 
     private BlockState setLayerBlockState(BlockState paintBlockState)
