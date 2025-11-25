@@ -57,3 +57,4 @@ The tokens.json file supports expansion using `( )`, any characters in parenthes
 ## Credits
 
 ***Credit to Monsterfish_ for the paintbrush and paint knife textures.***
+***Credit to Ajcool & Paul for developing the mod.***
