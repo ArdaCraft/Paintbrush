@@ -14,7 +14,7 @@ classes/
 .idea/
 *.iml
 *.ipr
-*.iws
+*.iwsmicrosoft_accounts
 
 # vscode
 
@@ -43,4 +43,5 @@ replay_*.log
 /lib/
 
 # Ignore DevAuth tokens
+
 .devauth/microsoft_accounts.json

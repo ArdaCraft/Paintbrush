@@ -25,6 +25,8 @@ loom {
 			property("devauth.configDir", getRootProject().file(".devauth").absolutePath)
 			runDir = "run"
 			client()
+			vmArg "-Xmx8G"
+			vmArg "-Xms8G"
 		}
 
 		server {

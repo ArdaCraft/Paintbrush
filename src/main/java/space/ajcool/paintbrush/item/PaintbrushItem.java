@@ -153,7 +153,6 @@ public class PaintbrushItem extends Item
     }
 
     @Override
-    @SuppressWarnings({"unchecked", "rawtypes"})
     public ActionResult useOnBlock(ItemUsageContext itemUsageContext)
     {
         var world = itemUsageContext.getWorld();
@@ -197,14 +196,14 @@ public class PaintbrushItem extends Item
 
             if (!world.canSetBlock(pos) || targetBlockState.isAir() || isFluid) continue;
 
-            BlockState paintBlockState = null;
+            BlockState sourcePaintBlockState = null;
 
             if (paintNbt.contains("state"))
             {
                 // Paintbrush has a full block state, no further processing required.
                 var state = paintNbt.getCompound("state");
                 RegistryWrapper<Block> registryEntryLookup = player.getWorld() != null ? player.getWorld().createCommandRegistryWrapper(RegistryKeys.BLOCK) : Registries.BLOCK.getReadOnlyWrapper();
-                paintBlockState = NbtHelper.toBlockState(registryEntryLookup, state);
+                sourcePaintBlockState = NbtHelper.toBlockState(registryEntryLookup, state);
             }
             else
             {
@@ -225,11 +224,11 @@ public class PaintbrushItem extends Item
                 {
                     RegistryWrapper<Block> registryEntryLookup = player.getWorld() != null ? player.getWorld().createCommandRegistryWrapper(RegistryKeys.BLOCK) : Registries.BLOCK.getReadOnlyWrapper();
 
-                    paintBlockState = Registries.BLOCK.get(paintIdentifier).getDefaultState();
+                    sourcePaintBlockState = Registries.BLOCK.get(paintIdentifier).getDefaultState();
                 }
                 else if (targetBlockState.getBlock().equals(targetFamily.getRoot()))
                 {
-                    paintBlockState = paintFamily.getRoot().getDefaultState();
+                    sourcePaintBlockState = paintFamily.getRoot().getDefaultState();
                 }
                 /*
                  Find a match between the target block and the paint family
@@ -255,7 +254,7 @@ public class PaintbrushItem extends Item
                     // If at least a conquest block or a minecraft block has been found proceed with setup
                     if (matchingBlock != null) {
 
-                        paintBlockState = matchingBlock.getStateWithProperties(targetBlockState);
+                        sourcePaintBlockState = matchingBlock.getStateWithProperties(targetBlockState);
 
                         var matchingBlockId = Registries.BLOCK.getId(matchingBlock).toString();
                         Property<?> typeKey = targetBlockState.getBlock().getStateManager().getProperty("type");
@@ -265,30 +264,30 @@ public class PaintbrushItem extends Item
                             Comparable<?> typeValue = targetBlockState.get(typeKey);
 
                             if (typeValue.toString().equals("double")) {
-                                paintBlockState = paintFamily.getRoot().getDefaultState();
+                                sourcePaintBlockState = paintFamily.getRoot().getDefaultState();
                             } else if (matchingBlockId.endsWith("layer")) {
                                 if (typeValue.toString().equals("bottom")
                                         && targetBlockState.getBlock().getStateManager().getProperty("layers") == null
                                         && targetBlockState.getBlock().getStateManager().getProperty("layer") == null) {
-                                    paintBlockState = setLayerBlockState(paintBlockState);
+                                    sourcePaintBlockState = setLayerBlockState(sourcePaintBlockState);
                                 } else if (typeValue.toString().equals("top")) {
                                     // If the target block has type=top, we can't use a layer-type with it.
-                                    paintBlockState = null;
+                                    sourcePaintBlockState = null;
                                     layerMismatch = true;
                                 }
                             } else if (matchingBlockId.endsWith("slab")
                                     && targetBlockState.getBlock().getStateManager().getProperty("layers") == null
                                     && targetBlockState.getBlock().getStateManager().getProperty("layer") == null) {
-                                var tempState = paintBlockState.with(Slab.TYPE_UPDOWN, typeValue.toString().equals("bottom") ? BlockHalf.BOTTOM : BlockHalf.TOP);
-                                paintBlockState = setLayerBlockState(tempState);
+                                var tempState = sourcePaintBlockState.with(Slab.TYPE_UPDOWN, typeValue.toString().equals("bottom") ? BlockHalf.BOTTOM : BlockHalf.TOP);
+                                sourcePaintBlockState = setLayerBlockState(tempState);
                             }
                         }
 
-                        if (paintBlockState != null) {
+                        if (sourcePaintBlockState != null) {
 
                             // Conquest uses two naming schemes for layered blocks, lets check if we're mismatching and convert between the two.
-                            var forwardLayerMismatch = targetBlockState.getBlock().getStateManager().getProperty("layers") != null && paintBlockState.getBlock().getStateManager().getProperty("layer") != null;
-                            var backwardLayerMismatch = targetBlockState.getBlock().getStateManager().getProperty("layer") != null && paintBlockState.getBlock().getStateManager().getProperty("layers") != null;
+                            var forwardLayerMismatch = targetBlockState.getBlock().getStateManager().getProperty("layers") != null && sourcePaintBlockState.getBlock().getStateManager().getProperty("layer") != null;
+                            var backwardLayerMismatch = targetBlockState.getBlock().getStateManager().getProperty("layer") != null && sourcePaintBlockState.getBlock().getStateManager().getProperty("layers") != null;
 
                             if (forwardLayerMismatch || backwardLayerMismatch) {
 
@@ -296,9 +295,9 @@ public class PaintbrushItem extends Item
                                 Integer targetValue = (Integer) targetBlockState.get(targetKey);
 
                                 if (forwardLayerMismatch && targetValue == 8)
-                                    paintBlockState = paintFamily.getRoot().getDefaultState();
+                                    sourcePaintBlockState = paintFamily.getRoot().getDefaultState();
                                 else if (forwardLayerMismatch && (targetValue == 3 || targetValue == 5 || targetValue > 6)) {
-                                    paintBlockState = null;
+                                    sourcePaintBlockState = null;
                                     layerMismatch = true;
                                 } else {
                                     if (forwardLayerMismatch && targetValue == 4) targetValue = 3;
@@ -307,15 +306,15 @@ public class PaintbrushItem extends Item
                                     if (backwardLayerMismatch && targetValue == 4) targetValue = 6;
                                     if (backwardLayerMismatch && targetValue == 3) targetValue = 4;
 
-                                    var paintKey = (IntProperty) paintBlockState.getBlock().getStateManager().getProperty(forwardLayerMismatch ? "layer" : "layers");
-                                    paintBlockState = paintBlockState.with(paintKey, targetValue);
+                                    var paintKey = (IntProperty) sourcePaintBlockState.getBlock().getStateManager().getProperty(forwardLayerMismatch ? "layer" : "layers");
+                                    sourcePaintBlockState = sourcePaintBlockState.with(paintKey, targetValue);
                                 }
                             }
                         }
                     }
 
                     // Handle error messages if block is not found.
-                    if (paintBlockState == null && world.isClient && brushSize == 1)
+                    if (sourcePaintBlockState == null && world.isClient && brushSize == 1)
                     {
                         net.minecraft.text.MutableText errorMessage;
 
@@ -344,18 +343,10 @@ public class PaintbrushItem extends Item
                 }
             }
 
-            if (paintBlockState == null) continue;
-            else
-            {
-                // Copy target state to paint block
-                for (Property<?> property : targetBlockState.getProperties()) {
-                    if (paintBlockState.contains(property)) {
-                        paintBlockState = paintBlockState.with((Property) property, targetBlockState.get(property));
-                    }
-                }
-            }
+            copySourceBlockStatePropertiesToTarget(sourcePaintBlockState, targetBlockState);
 
-            blockStates.put(pos, paintBlockState);
+
+            blockStates.put(pos, sourcePaintBlockState);
         }
 
         if (blockStates.isEmpty())
@@ -389,6 +380,30 @@ public class PaintbrushItem extends Item
         player.playSound(SoundEvents.BLOCK_SLIME_BLOCK_PLACE, SoundCategory.BLOCKS, .2F, 1.0F);
 
         return ActionResult.CONSUME;
+    }
+
+    /**
+     * Copy all properties from the source block state to the target block state, except for "layer" and "layers" properties which are handled separately.
+     * @param source the block state from which to copy properties
+     * @param target the block state to which properties should be copied
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void copySourceBlockStatePropertiesToTarget(BlockState source, BlockState target)
+    {
+        if (source != null) {
+
+            // Copy target state to paint block
+            for (Property<?> property : target.getProperties()) {
+
+                boolean isLayerProp = !"layers".equalsIgnoreCase(property.getName()) && !"layer".equalsIgnoreCase(property.getName());
+
+                if (!isLayerProp && source.contains(property)) {
+
+
+                    source = source.with((Property) property, target.get(property));
+                }
+            }
+        }
     }
 
     private BlockState setLayerBlockState(BlockState paintBlockState)
