@@ -345,8 +345,8 @@ public class PaintbrushItem extends Item
 
             copySourceBlockStatePropertiesToTarget(sourcePaintBlockState, targetBlockState);
 
-
-            blockStates.put(pos, sourcePaintBlockState);
+            if (sourcePaintBlockState != null)
+                blockStates.put(pos, sourcePaintBlockState);
         }
 
         if (blockStates.isEmpty())
