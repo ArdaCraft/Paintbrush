@@ -31,6 +31,7 @@ bin/
 # fabric
 
 run/
+runServer/
 
 # java
 
@@ -40,3 +41,6 @@ replay_*.log
 *.jfr
 /gradle/
 /lib/
+
+# Ignore DevAuth tokens
+.devauth/microsoft_accounts.json

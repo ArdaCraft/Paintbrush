@@ -153,6 +153,7 @@ public class PaintbrushItem extends Item
     }
 
     @Override
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public ActionResult useOnBlock(ItemUsageContext itemUsageContext)
     {
         var world = itemUsageContext.getWorld();
@@ -187,13 +188,14 @@ public class PaintbrushItem extends Item
             }
         }
 
-        var blockStates = new HashMap<BlockPos, BlockState>();;
+        var blockStates = new HashMap<BlockPos, BlockState>();
 
         for(BlockPos pos : positions) {
 
             var targetBlockState = world.getBlockState(pos);
+            var isFluid = targetBlockState.getFluidState() != null && !targetBlockState.getFluidState().isEmpty();
 
-            if (!world.canSetBlock(pos) || targetBlockState.isAir() || targetBlockState.isLiquid()) continue;
+            if (!world.canSetBlock(pos) || targetBlockState.isAir() || isFluid) continue;
 
             BlockState paintBlockState = null;
 

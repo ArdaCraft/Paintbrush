@@ -54,6 +54,39 @@ The tokens.json file supports expansion using `( )`, any characters in parenthes
 
 - `pb debug showTokens` or `paintbrush debug showTokens` logs the current loaded tokens and reserved names in the console.
 
+### Developers Notes
+
+
+Server and clients requires the following mods to be installed to work properly in a dev environment :
+
+```gradle
+[animatica-0.6.1+1.20.4.jar](runServer/mods/animatica-0.6.1%2B1.20.4.jar)
+[ArdaGrass-1.2-1.20.1.jar](runServer/mods/ArdaGrass-1.2-1.20.1.jar)
+[cloth-config-11.1.136-fabric.jar](runServer/mods/cloth-config-11.1.136-fabric.jar)
+[ConquestArchitects-1.0.2-1.20.1.jar](runServer/mods/ConquestArchitects-1.0.2-1.20.1.jar)
+[ConquestHearthfire-1.0.3-1.20.1.jar](runServer/mods/ConquestHearthfire-1.0.3-1.20.1.jar)
+[ConquestReforged-fabric-1.20.1-1.4.1.4.jar](runServer/mods/ConquestReforged-fabric-1.20.1-1.5.0)
+[continuity-3.0.0+1.20.1.jar](runServer/mods/continuity-3.0.0%2B1.20.1.jar)
+[entity_model_features_1.20.1-fabric-3.0.1.jar](runServer/mods/entity_model_features_1.20.1-fabric-3.0.1.jar)
+[entity_texture_features_1.20.1-fabric-7.0.2.jar](runServer/mods/entity_texture_features_1.20.1-fabric-7.0.2.jar)
+[fabricskyboxes-0.7.3+mc1.20.1-custom.jar](runServer/mods/fabricskyboxes-0.7.3%2Bmc1.20.1-custom.jar)
+[polytone-1.20-3.5.9-fabric.jar](runServer/mods/polytone-1.20-3.5.9-fabric.jar)
+[worldedit-mod-7.2.15.jar](runServer/mods/worldedit-mod-7.2.15.jar)
+``` 
+
+<details>
+
+#### If using Conquest Reforged 1-1.4.1.4
+
+Additionally *on a local environment* the following files from **ConquestReforged-fabric-1.20.1-1.4.1.4.jar** should be modified as following to force the usage of 
+proper mixins (handled by the clients modloader in a production environment) :
+
+- File : **./Refabricated-fabric.mixins.json**, `"refmap": "conquest.refmap.json"` should point to `"refmap": "ConquestReforged-fabric-1.20.1-fabric-refmap.json"`
+- File : **./Refabricated.mixins.json**, `"refmap": "ConquestReforged-common-1.20.1-common-refmap.json"` should point to `"refmap": "ConquestReforged-fabric-1.20.1-fabric-refmap.json"`
+
+</details>
+
+
 ## Credits
 
 ***Credit to Monsterfish_ for the paintbrush and paint knife textures.***
