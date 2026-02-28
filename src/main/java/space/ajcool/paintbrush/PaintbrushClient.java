@@ -1,6 +1,5 @@
 package space.ajcool.paintbrush;
 
-import com.conquestrefabricated.core.item.family.Family;
 import com.conquestrefabricated.core.item.family.FamilyRegistry;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
@@ -14,11 +13,12 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
-import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.render.entity.FlyingItemEntityRenderer;
 import net.minecraft.entity.player.PlayerEntity;
@@ -33,11 +33,11 @@ import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import space.ajcool.paintbrush.tokenizer.TokenLoader;
+import org.jetbrains.annotations.Nullable;
+import space.ajcool.paintbrush.state.PaintbrushKeys;
+import space.ajcool.paintbrush.state.PaintbrushState;
 import space.ajcool.paintbrush.tokenizer.TokenRegistry;
-import space.ajcool.paintbrush.tokenizer.TokenReloadListener;
-
-import java.util.Iterator;
+import space.ajcool.paintbrush.tokenizer.PaintbrushResourcesReloadListener;
 
 import static space.ajcool.paintbrush.Paintbrush.*;
 import static space.ajcool.paintbrush.item.PaintKnifeItem.changeBlockLayer;
@@ -49,6 +49,8 @@ public class PaintbrushClient implements ClientModInitializer
 	public void onInitializeClient()
 	{
 		EntityRendererRegistry.register(Paintbrush.TOMATO, FlyingItemEntityRenderer::new);
+
+		PaintbrushKeys.register();
 
 		AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
 			if (player.isSpectator()) return ActionResult.PASS;
@@ -68,8 +70,17 @@ public class PaintbrushClient implements ClientModInitializer
         });
 
         // Token management
-        ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES)
-                .registerReloadListener(new TokenReloadListener());
+        ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES).registerReloadListener(new PaintbrushResourcesReloadListener());
+
+		HudRenderCallback.EVENT.register((context, tickDelta) -> {
+			if (PaintbrushState.DISABLE_FOLIAGE_PAINT) {
+
+				MinecraftClient client = MinecraftClient.getInstance();
+				TextRenderer textRenderer = client.textRenderer;
+
+				context.drawText(textRenderer, Text.translatable("paintbrush.filtering_foliage"), 20, 20, 0xFFFFFF, true);
+			}
+		});
 	}
 
 	private ActionResult handlePaintbrushInteraction(PlayerEntity player, ItemStack itemStack, BlockPos pos)

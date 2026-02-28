@@ -25,6 +25,8 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import space.ajcool.paintbrush.Paintbrush;
+import space.ajcool.paintbrush.filtering.PaintbrushFilter;
+import space.ajcool.paintbrush.state.PaintbrushState;
 import space.ajcool.paintbrush.tokenizer.TokenProcessor;
 
 import java.util.*;
@@ -195,6 +197,8 @@ public class PaintbrushItem extends Item
             var isFluid = targetBlockState.getFluidState() != null && !targetBlockState.getFluidState().isEmpty();
 
             if (!world.canSetBlock(pos) || targetBlockState.isAir() || isFluid) continue;
+
+            if (PaintbrushState.DISABLE_FOLIAGE_PAINT && PaintbrushFilter.contains(targetBlockState)) continue;
 
             BlockState sourcePaintBlockState = null;
 
