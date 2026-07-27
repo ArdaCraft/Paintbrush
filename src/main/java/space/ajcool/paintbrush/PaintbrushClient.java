@@ -393,21 +393,6 @@ public class PaintbrushClient implements ClientModInitializer {
     /**
      * Shows the current paint knife settings to the player.
      *
-     * @param context the command context
-     * @return 1 if successful
-     */
-    @SuppressWarnings("SameReturnValue")
-    private int showPaintKnifeSettings(CommandContext<FabricClientCommandSource> context) {
-        var player = context.getSource().getPlayer();
-
-        if (player != null) showPaintKnifeSettings(player);
-
-        return Command.SINGLE_SUCCESS;
-    }
-
-    /**
-     * Shows the current paint knife settings to the player.
-     *
      * @param player the player to notify
      */
     private void showPaintKnifeSettings(PlayerEntity player) {
