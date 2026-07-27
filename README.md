@@ -1,7 +1,6 @@
 # Conquest Reforged Paintbrush
 
-Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to "copy" and "paste" the material of a block onto another block while maintaining it's variant and properties. It also adds a paintknife which allows the user to change the layer properties of a targeted block.
-Usage
+Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to "copy" and "paste" the material of a block onto another block while maintaining its variant and properties. It also adds a paint knife which allows the user to change the layer properties of a targeted block.
 
 ## Usage
 
@@ -10,17 +9,35 @@ Usage
 ### Primary click:
 
 - With a **paintbrush** to copy the targeted block's material to the **paintbrush**.
-- With a **paintknife** will decrease the layer of a targeted block if it has layer properties.
+- With a **paint knife** will decrease the layer of a targeted block if it has layer properties.
+- With a **paint knife** on a layer-1 block will remove it when paint knife deletion is enabled.
 
 ### Secondary click:
 
 - With a **paintbrush** to paint the selected material onto the targeted block. This attempts to find the same block variant in a material's conquest family (see [Configuration](#Configuration)).
-- With a **paintknife** will increase the layer of a targeted block if it has layer properties.
+- With a **paint knife** will increase the layer of a targeted block if it has layer properties.
+- With a **paint knife** on a near-full layer/slab block will promote it to the full block in the same Conquest family.
+- With a **paint knife** on a full block will append a layer-1 slab in the clicked adjacent space when paint knife append is enabled and the target space is replaceable.
 
 ### Hold "Left Ctrl":
 
 - With a **paintbrush** while selecting a material to select in strict mode. All painted blocks will be an exact copy.
-- With a **paintknife** will change layers for a block adjacent to the blockface targeted.
+- With a **paint knife** will change layers for a block adjacent to the blockface targeted.
+
+### Paint knife commands
+
+- `paintknife` or `pk` shows the current paint knife settings.
+- `paintknife allow delete` or `pk allow delete` toggles layer-1 block deletion.
+- `paintknife allow append` or `pk allow append` toggles appending layer-1 slabs from full blocks.
+
+Both paint knife settings default to disabled and are stored in `config/paintbrush.json`:
+
+```json
+{
+  "paintknifeAllowDelete": false,
+  "paintknifeAllowAppend": false
+}
+```
 
 **Crouching** will show the material that is currently selected on a paintbrush.
 

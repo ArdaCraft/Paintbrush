@@ -33,6 +33,7 @@ import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import space.ajcool.paintbrush.config.PaintbrushConfig;
 import space.ajcool.paintbrush.tokenizer.TokenLoader;
 import space.ajcool.paintbrush.tokenizer.TokenRegistry;
 import space.ajcool.paintbrush.tokenizer.TokenReloadListener;
@@ -48,6 +49,8 @@ public class PaintbrushClient implements ClientModInitializer
 	@Override
 	public void onInitializeClient()
 	{
+        PaintbrushConfig.load();
+
 		EntityRendererRegistry.register(Paintbrush.TOMATO, FlyingItemEntityRenderer::new);
 
 		AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
@@ -65,6 +68,8 @@ public class PaintbrushClient implements ClientModInitializer
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             configureClientCommand("paintbrush", dispatcher);
             configureClientCommand("pb", dispatcher);
+            configurePaintKnifeCommand("paintknife", dispatcher);
+            configurePaintKnifeCommand("pk", dispatcher);
         });
 
         // Token management
@@ -161,6 +166,69 @@ public class PaintbrushClient implements ClientModInitializer
                     .then(ClientCommandManager.literal("showTokens")
                             .executes(this::showLoadedTokens)))
         );
+    }
+
+    private void configurePaintKnifeCommand(String commandName, CommandDispatcher<FabricClientCommandSource> dispatcher)
+    {
+        dispatcher.register(ClientCommandManager.literal(commandName)
+                .executes(this::showPaintKnifeSettings)
+                .then(ClientCommandManager.literal("allow")
+                        .then(ClientCommandManager.literal("delete")
+                                .executes(this::togglePaintKnifeDelete))
+                        .then(ClientCommandManager.literal("append")
+                                .executes(this::togglePaintKnifeAppend)))
+        );
+    }
+
+    private int showPaintKnifeSettings(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    {
+        var player = context.getSource().getPlayer();
+
+        if (player != null)
+        {
+            sendToggleMessage(player, "Paintknife block deletion", PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE);
+            sendToggleMessage(player, "Paintknife block append", PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private int togglePaintKnifeDelete(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    {
+        PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE = !PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null)
+        {
+            sendToggleMessage(player, "Paintknife block deletion", PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private int togglePaintKnifeAppend(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    {
+        PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND = !PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null)
+        {
+            sendToggleMessage(player, "Paintknife block append", PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private void sendToggleMessage(PlayerEntity player, String label, boolean enabled)
+    {
+        var message = Text.empty()
+                .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                .append(Text.literal(label + " ").formatted(Formatting.DARK_GRAY))
+                .append(Text.literal(enabled ? "enabled" : "disabled").formatted(enabled ? Formatting.GREEN : Formatting.RED));
+
+        player.sendMessage(message);
     }
 
     private int showLoadedTokens(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
