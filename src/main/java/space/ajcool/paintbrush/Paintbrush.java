@@ -84,6 +84,9 @@ public class Paintbrush implements ModInitializer {
     /** Packet identifier for the set itemstack network packet sent from client to server. */
     public static final Identifier SET_ITEMSTACK_PACKET_ID = new Identifier(ModID, "set_itemstack");
 
+    /** Packet identifier for the client request to give a paint knife. */
+    public static final Identifier GIVE_PAINT_KNIFE_PACKET_ID = new Identifier(ModID, "give_paint_knife");
+
     /** Registry key for the custom Paintbrush item group. */
     public static final RegistryKey<ItemGroup> PAINTBRUSH_ITEM_GROUP_KEY = RegistryKey.of(Registries.ITEM_GROUP.getKey(), new Identifier(ModID, "item_group"));
 
@@ -222,6 +225,9 @@ public class Paintbrush implements ModInitializer {
             server.execute(() ->
                     player.getInventory().setStack(slot, itemstack));
         });
+
+        ServerPlayNetworking.registerGlobalReceiver(GIVE_PAINT_KNIFE_PACKET_ID, (server, player, handler, buf, responseSender) ->
+                server.execute(() -> player.getInventory().insertStack(PAINT_KNIFE_ITEM.getDefaultStack())));
 
         // Registering commands
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->

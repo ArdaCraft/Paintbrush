@@ -79,8 +79,26 @@ public class PaintbrushClient implements ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             configureClientCommand("paintbrush", dispatcher);
             configureClientCommand("pb", dispatcher);
-            configurePaintKnifeCommand("paintknife", dispatcher);
-            configurePaintKnifeCommand("pk", dispatcher);
+            dispatcher.register(ClientCommandManager.literal("paintknife")
+                    .executes(this::givePaintKnife)
+                    .then(ClientCommandManager.literal("toggle")
+                            .executes(this::togglePaintKnifeOperations))
+                    .then(ClientCommandManager.literal("delete")
+                            .executes(this::togglePaintKnifeDelete))
+                    .then(ClientCommandManager.literal("append")
+                            .executes(this::togglePaintKnifeAppend))
+                    .then(ClientCommandManager.literal("fullblocks")
+                            .executes(this::togglePaintKnifeFullBlocks)));
+            dispatcher.register(ClientCommandManager.literal("pk")
+                    .executes(this::givePaintKnife)
+                    .then(ClientCommandManager.literal("toggle")
+                            .executes(this::togglePaintKnifeOperations))
+                    .then(ClientCommandManager.literal("delete")
+                            .executes(this::togglePaintKnifeDelete))
+                    .then(ClientCommandManager.literal("append")
+                            .executes(this::togglePaintKnifeAppend))
+                    .then(ClientCommandManager.literal("fullblocks")
+                            .executes(this::togglePaintKnifeFullBlocks)));
         });
 
         HudRenderCallback.EVENT.register((drawContext, tickDelta) ->
@@ -217,24 +235,6 @@ public class PaintbrushClient implements ClientModInitializer {
                                 .executes(this::showLoadedTokens))
                         .then(ClientCommandManager.literal("showFamily")
                                 .executes(this::showFamily)))
-        );
-    }
-
-    /**
-     * Registers client-side paint knife commands with the given dispatcher.
-     * Handles allow subcommands for delete and append operations.
-     *
-     * @param commandName the command name to register (paintknife or pk)
-     * @param dispatcher  the command dispatcher to register with
-     */
-    private void configurePaintKnifeCommand(String commandName, CommandDispatcher<FabricClientCommandSource> dispatcher) {
-        dispatcher.register(ClientCommandManager.literal(commandName)
-                .executes(this::showPaintKnifeSettings)
-                .then(ClientCommandManager.literal("allow")
-                        .then(ClientCommandManager.literal("delete")
-                                .executes(this::togglePaintKnifeDelete))
-                        .then(ClientCommandManager.literal("append")
-                                .executes(this::togglePaintKnifeAppend)))
         );
     }
 
@@ -400,10 +400,60 @@ public class PaintbrushClient implements ClientModInitializer {
     private int showPaintKnifeSettings(CommandContext<FabricClientCommandSource> context) {
         var player = context.getSource().getPlayer();
 
+        if (player != null) showPaintKnifeSettings(player);
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Shows the current paint knife settings to the player.
+     *
+     * @param player the player to notify
+     */
+    private void showPaintKnifeSettings(PlayerEntity player) {
+        sendToggleMessage(player, "Paintknife block deletion", PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE);
+        sendToggleMessage(player, "Paintknife block append", PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
+        sendToggleMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS);
+    }
+
+    /**
+     * Requests a paint knife from the server and prints the current settings.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int givePaintKnife(CommandContext<FabricClientCommandSource> context) {
+        ClientPlayNetworking.send(GIVE_PAINT_KNIFE_PACKET_ID, PacketByteBufs.create());
+
+        var player = context.getSource().getPlayer();
         if (player != null) {
-            sendToggleMessage(player, "Paintknife block deletion", PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE);
-            sendToggleMessage(player, "Paintknife block append", PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
+            var message = Text.empty()
+                    .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                    .append(Text.literal("Added a paint knife to inventory!").formatted(Formatting.DARK_GRAY));
+
+            player.sendMessage(message);
+            showPaintKnifeSettings(player);
         }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggles both paint knife operations and saves the configuration.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int togglePaintKnifeOperations(CommandContext<FabricClientCommandSource> context) {
+        var enable = !(PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE && PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
+        PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE = enable;
+        PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND = enable;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) showPaintKnifeSettings(player);
 
         return Command.SINGLE_SUCCESS;
     }
@@ -441,6 +491,25 @@ public class PaintbrushClient implements ClientModInitializer {
         var player = context.getSource().getPlayer();
         if (player != null) {
             sendToggleMessage(player, "Paintknife block append", PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggles whether the paint knife promotes max-layer blocks to full blocks and saves the configuration.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int togglePaintKnifeFullBlocks(CommandContext<FabricClientCommandSource> context) {
+        PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS = !PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            sendToggleMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS);
         }
 
         return Command.SINGLE_SUCCESS;

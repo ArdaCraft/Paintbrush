@@ -100,10 +100,15 @@ public class PaintKnifeItem extends Item {
 
             if (delta > 0
                     && value >= maxValue(layerProp)
-                    && !layerProp.getName().equals("level")
-                    && isSwappableLayerMember(state.getBlock())) {
+                    && !layerProp.getName().equals("level")) {
                 var family = FamilyRegistry.BLOCKS.getFamily(state.getBlock());
-                if (!family.getMembers().isEmpty()) return new LayerChange(pos, family.getRoot().getDefaultState());
+                if (!PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS) {
+                    return appendLayerBlock(world, family, pos, direction);
+                }
+
+                if (isSwappableLayerMember(state.getBlock()) && !family.getMembers().isEmpty()) {
+                    return new LayerChange(pos, family.getRoot().getDefaultState());
+                }
             }
 
             if (delta < 0
@@ -123,16 +128,7 @@ public class PaintKnifeItem extends Item {
         if (family.getMembers().isEmpty() || !state.getBlock().equals(family.getRoot())) return null;
 
         if (delta > 0) {
-            if (!PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND) return null;
-
-            var targetPos = pos.offset(direction);
-            if (!world.getBlockState(targetPos).isReplaceable()) return null;
-
-            var layerDirection = direction == Direction.UP || direction == Direction.DOWN
-                    ? direction
-                    : direction.getOpposite();
-            var newState = buildLayerState(family, layerDirection, 1);
-            return newState == null ? null : new LayerChange(targetPos, newState);
+            return appendLayerBlock(world, family, pos, direction);
         }
 
         if (delta == 0) return null;
@@ -256,6 +252,28 @@ public class PaintKnifeItem extends Item {
         }
 
         return null;
+    }
+
+    /**
+     * Appends a new layer block adjacent to the clicked face when the family supports it.
+     *
+     * @param world     the world containing the blocks
+     * @param family    the block family to select from
+     * @param pos       the clicked block position
+     * @param direction the direction that was clicked
+     * @return a layer change for the appended block, or null if appending is not allowed
+     */
+    private static LayerChange appendLayerBlock(World world, Family<Block> family, BlockPos pos, Direction direction) {
+        if (!PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND || family.getMembers().isEmpty()) return null;
+
+        var targetPos = pos.offset(direction);
+        if (!world.getBlockState(targetPos).isReplaceable()) return null;
+
+        var layerDirection = direction == Direction.UP || direction == Direction.DOWN
+                ? direction
+                : direction.getOpposite();
+        var newState = buildLayerState(family, layerDirection, 1);
+        return newState == null ? null : new LayerChange(targetPos, newState);
     }
 
     /**

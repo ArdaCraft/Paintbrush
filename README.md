@@ -16,7 +16,7 @@ Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to 
 
 - With a **paintbrush** to paint the selected material onto the targeted block. This attempts to find the same block variant in a material's Conquest family, including configured linked family groups such as logs, branches, and beams (see [Configuration](#configuration)).
 - With a **paint knife** will increase the layer of a targeted block if it has layer properties.
-- With a **paint knife** on a near-full layer/slab block will promote it to the full block in the same Conquest family.
+- With a **paint knife** on a near-full layer/slab block will promote it to the full block in the same Conquest family when full-block promotion is enabled.
 - With a **paint knife** on a full block will append a layer-1 slab in the clicked adjacent space when paint knife append is enabled and the target space is replaceable.
 
 ### Hold "Left Ctrl":
@@ -26,9 +26,11 @@ Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to 
 
 ### Paint knife commands
 
-- `paintknife` or `pk` shows the current paint knife settings.
-- `paintknife allow delete` or `pk allow delete` toggles layer-1 block deletion.
-- `paintknife allow append` or `pk allow append` toggles appending layer-1 slabs from full blocks.
+- `paintknife` or `pk` gives a paint knife and shows the current paint knife settings.
+- `paintknife toggle` or `pk toggle` toggles both paint knife settings together.
+- `paintknife delete` or `pk delete` toggles layer-1 block deletion.
+- `paintknife append` or `pk append` toggles appending layer-1 slabs from full blocks.
+- `paintknife fullblocks` or `pk fullblocks` toggles promoting a max-layer block into the full block of its family (enabled by default; when disabled, and append is enabled, a new layer-1 block is stacked in the clicked direction instead).
 
 ### Paintbrush filtering
 
@@ -38,12 +40,13 @@ Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to 
 
 When foliage filtering is enabled, filtered blocks are invisible to the paintbrush and paint knife while either tool is held: the crosshair, copy action, paint action, and paint knife target pass through matching states to the next non-filtered block in reach. Broad paintbrush strokes still skip any filtered states inside the painted volume, so grass, leaves, bushes, branches, saplings, and flowers are not modified. Filter entries are loaded from [paintbrush-filter.json](src/main/resources/assets/paintbrush/paintbrush-filter.json) and may be either lower-cased substrings matched against `BlockState.toString()` or block tags in `#namespace:id` form resolved through the synced block registry. Missing tags match nothing.
 
-Paint knife settings and foliage filtering default to disabled and are stored in `config/paintbrush.json`:
+Paint knife deletion and append settings default to disabled, full-block promotion defaults to enabled, and foliage filtering defaults to disabled. They are stored in `config/paintbrush.json`:
 
 ```json
 {
   "paintknifeAllowDelete": false,
   "paintknifeAllowAppend": false,
+  "paintknifeAllowFullBlocks": true,
   "filterFoliage": false
 }
 ```

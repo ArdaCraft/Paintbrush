@@ -30,6 +30,9 @@ public class PaintbrushConfig {
     /** Whether the paint knife can append new layer blocks when incrementing past max. */
     public static boolean PAINTKNIFE_ALLOW_APPEND = false;
 
+    /** Whether the paint knife promotes a max-layer block to its family's full block. */
+    public static boolean PAINTKNIFE_ALLOW_FULL_BLOCKS = true;
+
     /** Whether foliage-like blocks should be filtered (invisible to targeting and painting). */
     public static boolean FILTER_FOLIAGE = false;
 
@@ -47,10 +50,12 @@ public class PaintbrushConfig {
 
             PAINTKNIFE_ALLOW_DELETE = data.paintknifeAllowDelete;
             PAINTKNIFE_ALLOW_APPEND = data.paintknifeAllowAppend;
+            PAINTKNIFE_ALLOW_FULL_BLOCKS = data.paintknifeAllowFullBlocks;
             FILTER_FOLIAGE = data.filterFoliage;
         } catch (Exception e) {
             PAINTKNIFE_ALLOW_DELETE = false;
             PAINTKNIFE_ALLOW_APPEND = false;
+            PAINTKNIFE_ALLOW_FULL_BLOCKS = true;
             FILTER_FOLIAGE = false;
             Paintbrush.LOGGER.warn("Paintbrush - Could not load config from {}", CONFIG_PATH, e);
         }
@@ -65,6 +70,7 @@ public class PaintbrushConfig {
         var data = new ConfigData();
         data.paintknifeAllowDelete = PAINTKNIFE_ALLOW_DELETE;
         data.paintknifeAllowAppend = PAINTKNIFE_ALLOW_APPEND;
+        data.paintknifeAllowFullBlocks = PAINTKNIFE_ALLOW_FULL_BLOCKS;
         data.filterFoliage = FILTER_FOLIAGE;
 
         try {
@@ -85,6 +91,9 @@ public class PaintbrushConfig {
 
         /** Whether paint knife block appending is allowed. */
         boolean paintknifeAllowAppend = false;
+
+        /** Whether paint knife block promotion to full blocks is allowed. */
+        boolean paintknifeAllowFullBlocks = true;
 
         /** Whether foliage filtering is enabled. */
         boolean filterFoliage = false;
