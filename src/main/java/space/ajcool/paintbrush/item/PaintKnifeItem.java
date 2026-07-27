@@ -32,42 +32,33 @@ import space.ajcool.paintbrush.config.PaintbrushConfig;
 
 import static space.ajcool.paintbrush.Paintbrush.PAINT_KNIFE_ITEM;
 
-public class PaintKnifeItem extends Item
-{
-    public PaintKnifeItem(Settings settings)
-    {
+/**
+ * The Paint Knife item implementation.
+ * Allows players to increment or decrement layer-like block properties (layer, layers, level).
+ * Can swap full blocks for their layered variants and vice versa.
+ * Supports both horizontal and vertical layer blocks with directional properties.
+ */
+public class PaintKnifeItem extends Item {
+    /**
+     * Creates a new PaintKnifeItem with the given settings.
+     *
+     * @param settings the item settings
+     */
+    public PaintKnifeItem(Settings settings) {
         super(settings);
     }
 
-    @Override
-    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand)
-    {
-        ItemStack itemStack = user.getStackInHand(hand);
-        return TypedActionResult.consume(itemStack);
-    }
-
-    @Override
-    public ActionResult useOnBlock(ItemUsageContext itemUsageContext)
-    {
-        var world = itemUsageContext.getWorld();
-        if (!world.isClient()) return ActionResult.CONSUME;
-
-        var player = itemUsageContext.getPlayer();
-        if (player == null) return ActionResult.FAIL;
-
-        if (player.getItemCooldownManager().isCoolingDown(PAINT_KNIFE_ITEM)) return ActionResult.FAIL;
-        player.getItemCooldownManager().set(PAINT_KNIFE_ITEM, 4);
-
-        var blockPos = itemUsageContext.getBlockPos();
-        if (!world.canSetBlock(blockPos)) return ActionResult.FAIL;
-
-        changeBlockLayer(player, blockPos, itemUsageContext.getSide(), 1);
-
-        return ActionResult.CONSUME;
-    }
-
-    public static void changeBlockLayer(PlayerEntity player, BlockPos pos, Direction direction, int delta)
-    {
+    /**
+     * Changes the layer property of a block at the given position.
+     * Supports incrementing/decrementing layer values, swapping to family roots, appending layers, or deleting blocks.
+     * When Ctrl is held, targets the adjacent block in the given direction.
+     *
+     * @param player    the player performing the action
+     * @param pos       the block position to modify
+     * @param direction the direction clicked, used for appending/deleting and Ctrl-offset
+     * @param delta     the change amount: 1 to increment, -1 to decrement, 0 for special operations
+     */
+    public static void changeBlockLayer(PlayerEntity player, BlockPos pos, Direction direction, int delta) {
         if (Screen.hasControlDown()) pos = pos.offset(direction);
 
         var world = player.getWorld();
@@ -90,27 +81,34 @@ public class PaintKnifeItem extends Item
         world.setBlockState(change.pos(), change.state(), 18);
     }
 
-    private static LayerChange resolveLayerChange(World world, BlockState state, BlockPos pos, Direction direction, int delta)
-    {
+    /**
+     * Resolves what layer change should be applied to the block at the given position.
+     * Handles conversion between layered and full blocks, and respects configuration settings.
+     *
+     * @param world     the world containing the block
+     * @param state     the current block state
+     * @param pos       the block position
+     * @param direction the direction of the click
+     * @param delta     the requested change amount
+     * @return a LayerChange containing the new position and state, or null if no change is possible
+     */
+    private static LayerChange resolveLayerChange(World world, BlockState state, BlockPos pos, Direction direction, int delta) {
         var layerProp = getLayerProperty(state);
 
-        if (layerProp != null)
-        {
+        if (layerProp != null) {
             var value = state.get(layerProp);
 
             if (delta > 0
                     && value >= maxValue(layerProp)
                     && !layerProp.getName().equals("level")
-                    && isSwappableLayerMember(state.getBlock()))
-            {
+                    && isSwappableLayerMember(state.getBlock())) {
                 var family = FamilyRegistry.BLOCKS.getFamily(state.getBlock());
                 if (!family.getMembers().isEmpty()) return new LayerChange(pos, family.getRoot().getDefaultState());
             }
 
             if (delta < 0
                     && value == minValue(layerProp)
-                    && !layerProp.getName().equals("level"))
-            {
+                    && !layerProp.getName().equals("level")) {
                 if (!PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE) return null;
                 return new LayerChange(pos, Blocks.AIR.getDefaultState());
             }
@@ -124,8 +122,7 @@ public class PaintKnifeItem extends Item
         var family = FamilyRegistry.BLOCKS.getFamily(state.getBlock());
         if (family.getMembers().isEmpty() || !state.getBlock().equals(family.getRoot())) return null;
 
-        if (delta > 0)
-        {
+        if (delta > 0) {
             if (!PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND) return null;
 
             var targetPos = pos.offset(direction);
@@ -144,12 +141,16 @@ public class PaintKnifeItem extends Item
         return newState == null ? null : new LayerChange(pos, newState);
     }
 
-    private record LayerChange(BlockPos pos, BlockState state) { }
-
-    private static BlockState buildLayerState(Family<Block> family, Direction direction, int value)
-    {
-        if (direction == Direction.UP || direction == Direction.DOWN)
-        {
+    /**
+     * Builds a layered block state from a block family, preferring vertical or horizontal blocks based on direction.
+     *
+     * @param family    the block family to select a layer block from
+     * @param direction the direction that was clicked
+     * @param value     the layer value to set
+     * @return a layered block state with the given value, or null if no suitable layer block exists
+     */
+    private static BlockState buildLayerState(Family<Block> family, Direction direction, int value) {
+        if (direction == Direction.UP || direction == Direction.DOWN) {
             var horizontalState = buildHorizontalLayerState(family, direction, value);
             if (horizontalState != null) return horizontalState;
 
@@ -162,8 +163,14 @@ public class PaintKnifeItem extends Item
         return buildHorizontalLayerState(family, direction, value);
     }
 
-    private static IntProperty getLayerProperty(BlockState state)
-    {
+    /**
+     * Gets the layer-like property from a block state.
+     * Checks for "layer", "layers", or "level" properties in order of preference.
+     *
+     * @param state the block state to check
+     * @return the layer property, or null if the block has no layer-like properties
+     */
+    private static IntProperty getLayerProperty(BlockState state) {
         var stateManager = state.getBlock().getStateManager();
 
         var layerProp = asIntProperty(stateManager.getProperty("layer"));
@@ -173,35 +180,43 @@ public class PaintKnifeItem extends Item
         return layerProp;
     }
 
-    private static IntProperty asIntProperty(Property<?> property)
-    {
+    /**
+     * Casts a generic property to an IntProperty if possible.
+     *
+     * @param property the property to cast
+     * @return the property as an IntProperty, or null if it's not an IntProperty
+     */
+    private static IntProperty asIntProperty(Property<?> property) {
         if (property instanceof IntProperty intProperty) return intProperty;
 
         return null;
     }
 
-    private static BlockState buildHorizontalLayerState(Family<Block> family, Direction direction, int value)
-    {
-        for (var member : family.getMembers())
-        {
+    /**
+     * Builds a horizontal layer block state (standard or double slab) from a family.
+     * Prefers layer blocks, then falls back to regular slabs with appropriate type property.
+     *
+     * @param family    the block family to select from
+     * @param direction the direction clicked (UP/DOWN for slab type)
+     * @param value     the layer value to set
+     * @return a horizontal layer block state, or null if none exists in the family
+     */
+    private static BlockState buildHorizontalLayerState(Family<Block> family, Direction direction, int value) {
+        for (var member : family.getMembers()) {
             var memberId = Registries.BLOCK.getId(member).toString();
-            if (memberId.endsWith("_layer"))
-            {
+            if (memberId.endsWith("_layer")) {
                 var state = setLayerValue(member.getDefaultState(), value);
                 if (state != null) return state;
             }
         }
 
-        for (var member : family.getMembers())
-        {
+        for (var member : family.getMembers()) {
             var memberId = Registries.BLOCK.getId(member).toString();
-            if (isPlainSlabId(memberId))
-            {
+            if (isPlainSlabId(memberId)) {
                 var state = setLayerValue(member.getDefaultState(), value);
                 if (state == null) continue;
 
-                if (state.getBlock().getStateManager().getProperty("type") != null)
-                {
+                if (state.getBlock().getStateManager().getProperty("type") != null) {
                     state = state.with(Slab.TYPE_UPDOWN, direction == Direction.DOWN ? BlockHalf.TOP : BlockHalf.BOTTOM);
                 }
 
@@ -212,10 +227,17 @@ public class PaintKnifeItem extends Item
         return null;
     }
 
-    private static BlockState buildVerticalLayerState(Family<Block> family, Direction direction, int value)
-    {
-        for (var member : family.getMembers())
-        {
+    /**
+     * Builds a vertical layer block state from a family.
+     * Selects vertical slab blocks with the appropriate facing direction.
+     *
+     * @param family    the block family to select from
+     * @param direction the direction to face (used for vertical slab facing property)
+     * @param value     the layer value to set
+     * @return a vertical layer block state with the given direction, or null if none exists
+     */
+    private static BlockState buildVerticalLayerState(Family<Block> family, Direction direction, int value) {
+        for (var member : family.getMembers()) {
             var memberId = Registries.BLOCK.getId(member).toString();
             if (!memberId.endsWith("_vertical_slab")) continue;
 
@@ -228,8 +250,7 @@ public class PaintKnifeItem extends Item
 
             var facingProp = state.getBlock().getStateManager().getProperty("facing");
             if (facingProp instanceof DirectionProperty directionProperty
-                    && directionProperty.getValues().contains(direction))
-            {
+                    && directionProperty.getValues().contains(direction)) {
                 return state.with(directionProperty, direction);
             }
         }
@@ -237,8 +258,14 @@ public class PaintKnifeItem extends Item
         return null;
     }
 
-    private static BlockState setLayerValue(BlockState state, int value)
-    {
+    /**
+     * Sets the layer value on a block state, clamping to the property's valid range.
+     *
+     * @param state the block state to modify
+     * @param value the layer value to set, negative values default to max
+     * @return the modified block state, or null if the state has no layer property
+     */
+    private static BlockState setLayerValue(BlockState state, int value) {
         var layerProp = getLayerProperty(state);
         if (layerProp == null) return null;
 
@@ -251,18 +278,33 @@ public class PaintKnifeItem extends Item
         return state.with(layerProp, targetValue);
     }
 
-    private static int maxValue(IntProperty property)
-    {
+    /**
+     * Gets the maximum value for an integer property.
+     *
+     * @param property the integer property to check
+     * @return the maximum value this property can hold
+     */
+    private static int maxValue(IntProperty property) {
         return property.getValues().stream().max(Integer::compareTo).orElse(0);
     }
 
-    private static int minValue(IntProperty property)
-    {
+    /**
+     * Gets the minimum value for an integer property.
+     *
+     * @param property the integer property to check
+     * @return the minimum value this property can hold
+     */
+    private static int minValue(IntProperty property) {
         return property.getValues().stream().min(Integer::compareTo).orElse(0);
     }
 
-    private static boolean isSwappableLayerMember(Block block)
-    {
+    /**
+     * Checks if a block is a layer variant that can be swapped to/from its family root.
+     *
+     * @param block the block to check
+     * @return true if the block is a swappable layer variant
+     */
+    private static boolean isSwappableLayerMember(Block block) {
         var blockId = Registries.BLOCK.getId(block).toString();
 
         return blockId.endsWith("_layer")
@@ -270,13 +312,67 @@ public class PaintKnifeItem extends Item
                 || isPlainSlabId(blockId);
     }
 
-    private static boolean isPlainSlabId(String blockId)
-    {
+    /**
+     * Checks if a block ID represents a plain horizontal slab (not vertical, corner, or eighth variants).
+     *
+     * @param blockId the block ID to check
+     * @return true if the block is a plain slab
+     */
+    private static boolean isPlainSlabId(String blockId) {
         return blockId.endsWith("_slab")
                 && !blockId.endsWith("_vertical_slab")
                 && !blockId.endsWith("_corner_slab")
                 && !blockId.endsWith("_quarter_slab")
                 && !blockId.endsWith("_eighth_slab")
                 && !blockId.endsWith("_vertical_corner_slab");
+    }
+
+    /**
+     * Handles the primary use (left-click in air) of the paint knife.
+     *
+     * @param world the world where the action occurs
+     * @param user  the player using the item
+     * @param hand  the hand the item is in
+     * @return a typed action result indicating the action was consumed
+     */
+    @Override
+    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
+        ItemStack itemStack = user.getStackInHand(hand);
+        return TypedActionResult.consume(itemStack);
+    }
+
+    /**
+     * Handles secondary use (right-click on block) of the paint knife to increment layer properties.
+     * When Ctrl is held, targets the adjacent block instead.
+     *
+     * @param itemUsageContext the item usage context containing player, position, and world information
+     * @return CONSUME if the action was processed, FAIL if cooldown active or invalid target
+     */
+    @Override
+    public ActionResult useOnBlock(ItemUsageContext itemUsageContext) {
+        var world = itemUsageContext.getWorld();
+        if (!world.isClient()) return ActionResult.CONSUME;
+
+        var player = itemUsageContext.getPlayer();
+        if (player == null) return ActionResult.FAIL;
+
+        if (player.getItemCooldownManager().isCoolingDown(PAINT_KNIFE_ITEM)) return ActionResult.FAIL;
+        player.getItemCooldownManager().set(PAINT_KNIFE_ITEM, 4);
+
+        var blockPos = itemUsageContext.getBlockPos();
+        if (!world.canSetBlock(blockPos)) return ActionResult.FAIL;
+
+        changeBlockLayer(player, blockPos, itemUsageContext.getSide(), 1);
+
+        return ActionResult.CONSUME;
+    }
+
+    /**
+     * Represents a proposed change to a block's layer state.
+     *
+     * @param pos   the position of the block to change
+     * @param state the new block state to apply
+     */
+    private record LayerChange(BlockPos pos, BlockState state) {
     }
 }

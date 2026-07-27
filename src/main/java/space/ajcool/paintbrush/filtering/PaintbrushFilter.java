@@ -20,39 +20,53 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
+/**
+ * Manages foliage filtering for the paintbrush.
+ * Loads block tags and name patterns from paintbrush-filter.json to identify foliage-like blocks.
+ * Filtered blocks are invisible to brush targeting and are not painted when filtering is enabled.
+ */
 @Environment(EnvType.CLIENT)
-public final class PaintbrushFilter
-{
+public final class PaintbrushFilter {
+
+    /** Logger for filter operations. */
     private static final Logger LOGGER = LoggerFactory.getLogger("PaintbrushFilter");
+
+    /** List of lowercase block state strings to match against foliage. */
     private static List<String> FILTER_NAMES = List.of();
+
+    /** List of block tags that identify foliage blocks. */
     private static List<TagKey<Block>> FILTER_TAGS = List.of();
 
-    private PaintbrushFilter()
-    {
+    /**
+     * Private constructor to prevent instantiation.
+     */
+    @SuppressWarnings("unused")
+    private PaintbrushFilter() {
     }
 
-    public static void load()
-    {
+    /**
+     * Loads the filter configuration from paintbrush-filter.json.
+     * Entries can be lowercase block state substrings or #namespace:id block tag references.
+     */
+    public static void load() {
         var id = new Identifier("paintbrush", "paintbrush-filter.json");
         Optional<Resource> resource = MinecraftClient.getInstance()
                 .getResourceManager()
                 .getResource(id);
 
-        if (resource.isEmpty())
-        {
+        if (resource.isEmpty()) {
             FILTER_NAMES = List.of();
             FILTER_TAGS = List.of();
             LOGGER.warn("Paintbrush - Could not find paintbrush-filter.json!");
             return;
         }
 
-        try (InputStream stream = resource.get().getInputStream())
-        {
-            var type = new TypeToken<List<String>>(){}.getType();
+        try (InputStream stream = resource.get().getInputStream()) {
+            var type = new TypeToken<List<String>>() {
+            }.getType();
             List<String> data = new Gson().fromJson(new InputStreamReader(stream), type);
 
-            if (data == null)
-            {
+            if (data == null) {
                 FILTER_NAMES = List.of();
                 FILTER_TAGS = List.of();
                 LOGGER.warn("Paintbrush - paintbrush-filter.json contains no filter items");
@@ -73,9 +87,7 @@ public final class PaintbrushFilter
                     .filter(name -> !name.startsWith("#"))
                     .toList();
             LOGGER.info("Paintbrush - Initialized {} filter items and {} filter tags", FILTER_NAMES.size(), FILTER_TAGS.size());
-        }
-        catch (Exception e)
-        {
+        } catch (Exception e) {
             FILTER_NAMES = List.of();
             FILTER_TAGS = List.of();
             LOGGER.warn("Paintbrush - Could not load paintbrush-filter.json!");
@@ -83,35 +95,43 @@ public final class PaintbrushFilter
         }
     }
 
-    public static boolean contains(BlockState blockState)
-    {
-        for (var tag : FILTER_TAGS)
-        {
-            if (blockState.isIn(tag))
-            {
-                return true;
-            }
-        }
-
-        if (FILTER_NAMES.isEmpty())
-        {
-            return false;
-        }
-
-        var blockStateString = blockState.toString().toLowerCase(Locale.ROOT);
-        return FILTER_NAMES.stream().anyMatch(blockStateString::contains);
-    }
-
-    private static Optional<TagKey<Block>> parseTag(String name)
-    {
+    /**
+     * Parses a tag identifier from a filter entry string.
+     * Tag entries are prefixed with # (e.g., "#minecraft:leaves").
+     *
+     * @param name the tag entry string (including # prefix)
+     * @return an optional containing the parsed tag, or empty if parsing failed
+     */
+    private static Optional<TagKey<Block>> parseTag(String name) {
         var identifier = Identifier.tryParse(name.substring(1));
 
-        if (identifier == null)
-        {
+        if (identifier == null) {
             LOGGER.warn("Paintbrush - Skipping malformed block tag filter entry '{}'", name);
             return Optional.empty();
         }
 
         return Optional.of(TagKey.of(RegistryKeys.BLOCK, identifier));
+    }
+
+    /**
+     * Checks if a block state matches the foliage filter.
+     * Returns true if the block matches any filter tag or contains any filter name substring.
+     *
+     * @param blockState the block state to check
+     * @return true if the block is filtered (considered foliage)
+     */
+    public static boolean contains(BlockState blockState) {
+        for (var tag : FILTER_TAGS) {
+            if (blockState.isIn(tag)) {
+                return true;
+            }
+        }
+
+        if (FILTER_NAMES.isEmpty()) {
+            return false;
+        }
+
+        var blockStateString = blockState.toString().toLowerCase(Locale.ROOT);
+        return FILTER_NAMES.stream().anyMatch(blockStateString::contains);
     }
 }

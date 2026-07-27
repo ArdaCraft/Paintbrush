@@ -24,10 +24,22 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import space.ajcool.paintbrush.Paintbrush;
 
+/**
+ * Mixin for PlayerInventory to handle Ctrl+scroll for changing brush size.
+ * When holding the paintbrush and Ctrl is pressed, scrolling changes the brush size (1-5).
+ * Updates the item name to reflect the new size and syncs with the server.
+ */
 @Environment(EnvType.CLIENT)
 @Mixin(PlayerInventory.class)
-public class PlayerInventoryMixin
-{
+public class PlayerInventoryMixin {
+
+    /**
+     * Injects into scrollInHotbar to intercept scroll wheel events.
+     * When Ctrl is held and paintbrush is selected, changes brush size instead of switching slots.
+     *
+     * @param scrollAmount the scroll wheel amount (positive = scroll up)
+     * @param ci           the callback info for this injection
+     */
     @Inject(
             method = "scrollInHotbar(D)V",
             at = @At("HEAD"),
@@ -35,8 +47,7 @@ public class PlayerInventoryMixin
     )
     private void onMouseScroll(double scrollAmount, CallbackInfo ci) {
 
-        if (Screen.hasControlDown())
-        {
+        if (Screen.hasControlDown()) {
             var player = MinecraftClient.getInstance().player;
             if (player == null) return;
 
@@ -53,15 +64,12 @@ public class PlayerInventoryMixin
             var iHaveAState = false;
             BlockState blockState;
 
-            if (paintNbt.contains("state"))
-            {
+            if (paintNbt.contains("state")) {
                 var state = paintNbt.getCompound("state");
                 RegistryWrapper<Block> registryEntryLookup = player.getWorld() != null ? player.getWorld().createCommandRegistryWrapper(RegistryKeys.BLOCK) : Registries.BLOCK.getReadOnlyWrapper();
                 blockState = NbtHelper.toBlockState(registryEntryLookup, state);
                 iHaveAState = true;
-            }
-            else
-            {
+            } else {
                 var material = paintNbt.getString("material");
                 var paintIdentifier = new Identifier(material);
                 var paintFamily = FamilyRegistry.BLOCKS.getFamily(paintIdentifier);

@@ -26,139 +26,55 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import space.ajcool.paintbrush.Paintbrush;
-import space.ajcool.paintbrush.config.PaintbrushConfig;
 import space.ajcool.paintbrush.family.FamilyGroupRegistry;
-import space.ajcool.paintbrush.filtering.PaintbrushFilter;
 import space.ajcool.paintbrush.tokenizer.TokenProcessor;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-public class PaintbrushItem extends Item
-{
-    public PaintbrushItem(Settings settings)
-    {
+/**
+ * The Paintbrush item implementation.
+ * Allows players to copy block materials from one location and paint them across multiple blocks
+ * in different Conquest Reforged block families.
+ * Handles family matching through tokenizer-based and legacy suffix-matching algorithms.
+ * Supports various layer and property edge cases specific to Conquest blocks.
+ */
+public class PaintbrushItem extends Item {
+    /**
+     * Creates a new PaintbrushItem with the given settings.
+     *
+     * @param settings the item settings
+     */
+    public PaintbrushItem(Settings settings) {
         super(settings);
     }
 
+    /**
+     * Handles the primary use (left-click in air) of the paintbrush.
+     *
+     * @param world the world where the action occurs
+     * @param user  the player using the item
+     * @param hand  the hand the item is in
+     * @return a typed action result indicating the action was consumed
+     */
     @Override
-    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand)
-    {
+    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
         ItemStack itemStack = user.getStackInHand(hand);
         return TypedActionResult.consume(itemStack);
     }
 
     /**
-     * Given a target block and a paint family, filter down the family and extract the best candidates matching the
-     * target block. This method will try to return a single result
-     * @param targetBlockState the reference block from which to find a counterpart in the family
-     * @param paintFamily the paint family from which to find a counterpart
-     * @return a list of matching blocks for the given target.
+     * Handles secondary use (right-click on block) of the paintbrush to apply the copied material.
+     * Collects target blocks based on brush size and applies the painted block state to each.
+     * Handles complex block state property matching and layer conversions for Conquest blocks.
+     *
+     * @param itemUsageContext the item usage context containing player, position, and world information
+     * @return CONSUME if the action was processed, FAIL if no changes were made
      */
-    private List<Block> filterBlockCandidatesFromPaintFamily(BlockState targetBlockState, Family<Block> paintFamily, boolean debugOut)
-    {
-
-        List<Block> results;
-        final TokenProcessor tokenProcessor = new TokenProcessor();
-
-        Pair<Block, List<String>> tokenizedTargetBlock = tokenProcessor.tokenizeBlock(targetBlockState.getBlock());
-        List<Pair<Block, List<String>>> tokenizedPaintFamilyBlocks = paintFamily.getMembers().stream()
-                .map(tokenProcessor::tokenizeBlock)
-                .toList();
-
-        results = tokenizedPaintFamilyBlocks.stream()
-                .filter(familyBlock -> tokenProcessor.tokenizedBlocksMatch(familyBlock, tokenizedTargetBlock))
-                .map(Pair::getLeft)
-                .toList();
-
-        if (debugOut){
-            tokenProcessor.outputDebug(tokenizedTargetBlock, tokenizedPaintFamilyBlocks);
-        }
-
-        // Fallback - legacy matching algorithm
-        if (results.isEmpty()){
-
-            Block matchingBlock = filterSingleBlockCandidateFromPaintFamily(targetBlockState, paintFamily);
-            if (matchingBlock != null)
-            {
-                results = new ArrayList<>();
-                results.add(matchingBlock);
-            }
-        }
-
-        return results;
-    }
-
-    /**
-     * Legacy search by token. Identifies a matching block by splitting its id and comparing to the target family members
-     * @param targetBlockState the block to paint
-     * @param paintFamily the paint family from which to identify a paint candidate
-     * @return the matching block or null
-     */
-    private Block filterSingleBlockCandidateFromPaintFamily(BlockState targetBlockState, Family<Block> paintFamily) {
-        var targetBlockId = ConquestDisambiguation(Registries.BLOCK.getId(targetBlockState.getBlock()).toString());
-        var idParts = targetBlockId.split("_");
-
-        Block matchingBlock = null;
-
-        // Operational Steps
-        // 1. Split the material string by underscores
-        // 2. Starting from the end, check for matches between different block families
-        // 3. If a match is found, copy its properties, account for edge-cases, and set the new block state
-        for (int i = idParts.length - 1; i >= 0; i--) {
-            StringBuilder stringBuilder = new StringBuilder();
-            for (int j = i; j < idParts.length; j++) {
-                stringBuilder.append("_").append(idParts[j]);
-            }
-            var endMatch = stringBuilder.toString();
-
-            // Check for separate matches for both conquest and minecraft blocks.
-            // We want to prioritize conquest blocks if two blocks have the same ending type.
-            // ie. minecraft:...cobble_slab & conquest:...cobble_slab
-            // The conquest version supports layers, the minecraft version does not.
-            var conquestMatches = 0;
-            for (Block paintFamilyMember : paintFamily.getMembers()) {
-                var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
-                if (rawMemberId.startsWith("minecraft")) continue;
-                if (ConquestDisambiguation(rawMemberId).endsWith(endMatch)) conquestMatches += 1;
-            }
-
-            var minecraftMatches = 0;
-            for (Block paintFamilyMember : paintFamily.getMembers()) {
-                var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
-                if (rawMemberId.startsWith("conquest")) continue;
-                if (ConquestDisambiguation(rawMemberId).endsWith(endMatch)) minecraftMatches += 1;
-            }
-
-            // If we haven't narrowed down our block list, we want to move on to search with a more specific tag
-            if (conquestMatches != 1 && minecraftMatches != 1) continue;
-
-            // Prioritize conquest, check for a minecraft block otherwise.
-            if (conquestMatches == 1) {
-                for (Block paintFamilyMember : paintFamily.getMembers()) {
-                    var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
-                    if (rawMemberId.startsWith("minecraft")) continue;
-                    if (!ConquestDisambiguation(rawMemberId).endsWith(endMatch)) continue;
-                    matchingBlock = paintFamilyMember;
-                }
-            } else {
-                for (Block paintFamilyMember : paintFamily.getMembers()) {
-                    var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
-                    if (rawMemberId.startsWith("conquest")) continue;
-                    if (!ConquestDisambiguation(rawMemberId).endsWith(endMatch)) continue;
-                    matchingBlock = paintFamilyMember;
-                }
-            }
-
-            // If we for some reason still fail to find a block, break out of this loop.
-            if (matchingBlock == null) break;
-        }
-
-        return matchingBlock;
-    }
-
     @Override
-    public ActionResult useOnBlock(ItemUsageContext itemUsageContext)
-    {
+    public ActionResult useOnBlock(ItemUsageContext itemUsageContext) {
         var world = itemUsageContext.getWorld();
         if (!world.isClient()) return ActionResult.CONSUME;
 
@@ -176,32 +92,26 @@ public class PaintbrushItem extends Item
 
         var blockStates = new HashMap<BlockPos, BlockState>();
 
-        for(BlockPos pos : positions) {
+        for (BlockPos pos : positions) {
 
             var targetBlockState = world.getBlockState(pos);
             if (!PaintbrushVolume.isPaintable(world, pos)) continue;
 
             BlockState sourcePaintBlockState = null;
 
-            if (paintNbt.contains("state"))
-            {
+            if (paintNbt.contains("state")) {
                 // Paintbrush has a full block state, no further processing required.
                 var state = paintNbt.getCompound("state");
                 RegistryWrapper<Block> registryEntryLookup = player.getWorld() != null ? player.getWorld().createCommandRegistryWrapper(RegistryKeys.BLOCK) : Registries.BLOCK.getReadOnlyWrapper();
                 sourcePaintBlockState = NbtHelper.toBlockState(registryEntryLookup, state);
-            }
-            else
-            {
+            } else {
                 var material = paintNbt.getString("material");
                 var paintIdentifier = new Identifier(material);
                 var paintBlock = Registries.BLOCK.get(paintIdentifier);
 
-                if (paintBlock == Blocks.AIR)
-                {
+                if (paintBlock == Blocks.AIR) {
                     sourcePaintBlockState = paintBlock.getDefaultState();
-                }
-                else
-                {
+                } else {
                     var targetBlock = targetBlockState.getBlock();
 
                     if (targetBlock == paintBlock) continue;
@@ -221,20 +131,16 @@ public class PaintbrushItem extends Item
 
                     // Use paint default state if the target block has no members or if it is the root of the family
                     if (targetFamily.isAbsent() || paintFamily.isAbsent()
-                            || targetFamily.getMembers().isEmpty() || paintFamily.getMembers().isEmpty())
-                    {
+                            || targetFamily.getMembers().isEmpty() || paintFamily.getMembers().isEmpty()) {
                         sourcePaintBlockState = paintBlock.getStateWithProperties(targetBlockState);
-                    }
-                    else if (targetBlock.equals(targetFamily.getRoot()))
-                    {
+                    } else if (targetBlock.equals(targetFamily.getRoot())) {
                         sourcePaintBlockState = familyRootOrPaint(paintFamily, paintBlock, targetBlockState);
                     }
                     /*
                      Find a match between the target block and the paint family
                      copy its properties, account for edge-cases, and set the new block state
                      */
-                    else
-                    {
+                    else {
                         var layerMismatch = false;
                         var tokenizerDebugOutput = paintNbt.getString("debug");
                         var tokenizerDebugEnabled = tokenizerDebugOutput != null && !tokenizerDebugOutput.isBlank();
@@ -248,7 +154,6 @@ public class PaintbrushItem extends Item
                         Block matchingBlock = null;
 
                         if (matchingBlocks.size() == 1) matchingBlock = matchingBlocks.get(0);
-
 
                         // If at least a conquest block or a minecraft block has been found proceed with setup
                         if (matchingBlock != null) {
@@ -313,12 +218,10 @@ public class PaintbrushItem extends Item
                         }
 
                         // Handle error messages if block is not found.
-                        if (sourcePaintBlockState == null && world.isClient && brushSize == 1)
-                        {
+                        if (sourcePaintBlockState == null && world.isClient && brushSize == 1) {
                             net.minecraft.text.MutableText errorMessage;
 
-                            if (!layerMismatch)
-                            {
+                            if (!layerMismatch) {
                                 errorMessage = Text.empty()
                                         .append(Text.literal("Paintbrush:").formatted(Formatting.DARK_AQUA))
                                         .append(Text.literal(" Target model ").formatted(Formatting.DARK_GRAY))
@@ -327,9 +230,7 @@ public class PaintbrushItem extends Item
                                         .append(Text.literal(material).formatted(Formatting.GRAY))
                                         .append(Text.literal(". ").formatted(Formatting.DARK_GRAY));
 
-                            }
-                            else
-                            {
+                            } else {
                                 errorMessage = Text.empty()
                                         .append(Text.literal("Paintbrush:").formatted(Formatting.DARK_AQUA))
                                         .append(Text.literal(" Target block layer is not supported by the selected paint material").formatted(Formatting.DARK_GRAY))
@@ -347,8 +248,7 @@ public class PaintbrushItem extends Item
                 blockStates.put(pos, sourcePaintBlockState);
         }
 
-        if (blockStates.isEmpty())
-        {
+        if (blockStates.isEmpty()) {
             Paintbrush.LOGGER.info("Block state is null.");
             return ActionResult.FAIL;
         }
@@ -367,8 +267,7 @@ public class PaintbrushItem extends Item
 
         packetBuffer.writeInt(blockStates.size());
 
-        for (Map.Entry<BlockPos, BlockState> kvpEntry : blockStates.entrySet())
-        {
+        for (Map.Entry<BlockPos, BlockState> kvpEntry : blockStates.entrySet()) {
             packetBuffer.writeBlockPos(kvpEntry.getKey());
             packetBuffer.writeNbt(NbtHelper.fromBlockState(kvpEntry.getValue()));
         }
@@ -380,23 +279,75 @@ public class PaintbrushItem extends Item
         return ActionResult.CONSUME;
     }
 
-    private static BlockState familyRootOrPaint(Family<Block> paintFamily, Block paintBlock, BlockState targetBlockState)
-    {
-        if (paintFamily.isAbsent() || paintFamily.getMembers().isEmpty())
-        {
+    /**
+     * Returns the family root block state if the paint family is valid, otherwise returns the paint block state.
+     * Copies properties from the target block state to the selected paint block state.
+     *
+     * @param paintFamily      the paint family to check
+     * @param paintBlock       the fallback paint block if family is absent
+     * @param targetBlockState the target block state whose properties should be copied
+     * @return the family root or paint block state with transferred properties
+     */
+    private static BlockState familyRootOrPaint(Family<Block> paintFamily, Block paintBlock, BlockState targetBlockState) {
+        if (paintFamily.isAbsent() || paintFamily.getMembers().isEmpty()) {
             return paintBlock.getStateWithProperties(targetBlockState);
         }
 
         return paintFamily.getRoot().getStateWithProperties(targetBlockState);
     }
 
-    private BlockState setLayerBlockState(BlockState paintBlockState)
-    {
+    /**
+     * Given a target block and a paint family, filter down the family and extract the best candidates matching the
+     * target block. This method will try to return a single result
+     *
+     * @param targetBlockState the reference block from which to find a counterpart in the family
+     * @param paintFamily      the paint family from which to find a counterpart
+     * @return a list of matching blocks for the given target.
+     */
+    private List<Block> filterBlockCandidatesFromPaintFamily(BlockState targetBlockState, Family<Block> paintFamily, boolean debugOut) {
+
+        List<Block> results;
+        final TokenProcessor tokenProcessor = new TokenProcessor();
+
+        Pair<Block, List<String>> tokenizedTargetBlock = tokenProcessor.tokenizeBlock(targetBlockState.getBlock());
+        List<Pair<Block, List<String>>> tokenizedPaintFamilyBlocks = paintFamily.getMembers().stream()
+                .map(tokenProcessor::tokenizeBlock)
+                .toList();
+
+        results = tokenizedPaintFamilyBlocks.stream()
+                .filter(familyBlock -> tokenProcessor.tokenizedBlocksMatch(familyBlock, tokenizedTargetBlock))
+                .map(Pair::getLeft)
+                .toList();
+
+        if (debugOut) {
+            tokenProcessor.outputDebug(tokenizedTargetBlock, tokenizedPaintFamilyBlocks);
+        }
+
+        // Fallback - legacy matching algorithm
+        if (results.isEmpty()) {
+
+            Block matchingBlock = filterSingleBlockCandidateFromPaintFamily(targetBlockState, paintFamily);
+            if (matchingBlock != null) {
+                results = new ArrayList<>();
+                results.add(matchingBlock);
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Sets the layer or layers property of a block state to a default value.
+     * Handles both the "layer" and "layers" property names used by Conquest blocks.
+     *
+     * @param paintBlockState the paint block state to modify
+     * @return the modified block state with layer property set to 3 or 4
+     */
+    private BlockState setLayerBlockState(BlockState paintBlockState) {
         var paintKey = (IntProperty) paintBlockState.getBlock().getStateManager().getProperty("layer");
 
         if (paintKey != null) paintBlockState = paintBlockState.with(paintKey, 3);
-        else
-        {
+        else {
             paintKey = (IntProperty) paintBlockState.getBlock().getStateManager().getProperty("layers");
             if (paintKey != null) paintBlockState = paintBlockState.with(paintKey, 4);
         }
@@ -404,8 +355,84 @@ public class PaintbrushItem extends Item
         return paintBlockState;
     }
 
-    private String ConquestDisambiguation(String input)
-    {
+    /**
+     * Legacy search by token. Identifies a matching block by splitting its id and comparing to the target family members
+     *
+     * @param targetBlockState the block to paint
+     * @param paintFamily      the paint family from which to identify a paint candidate
+     * @return the matching block or null
+     */
+    private Block filterSingleBlockCandidateFromPaintFamily(BlockState targetBlockState, Family<Block> paintFamily) {
+        var targetBlockId = ConquestDisambiguation(Registries.BLOCK.getId(targetBlockState.getBlock()).toString());
+        var idParts = targetBlockId.split("_");
+
+        Block matchingBlock = null;
+
+        // Operational Steps
+        // 1. Split the material string by underscores
+        // 2. Starting from the end, check for matches between different block families
+        // 3. If a match is found, copy its properties, account for edge-cases, and set the new block state
+        for (int i = idParts.length - 1; i >= 0; i--) {
+            StringBuilder stringBuilder = new StringBuilder();
+            for (int j = i; j < idParts.length; j++) {
+                stringBuilder.append("_").append(idParts[j]);
+            }
+            var endMatch = stringBuilder.toString();
+
+            // Check for separate matches for both conquest and minecraft blocks.
+            // We want to prioritize conquest blocks if two blocks have the same ending type.
+            // i.e. minecraft:...cobble_slab & conquest:...cobble_slab
+            // The conquest version supports layers, the minecraft version does not.
+            var conquestMatches = 0;
+            for (Block paintFamilyMember : paintFamily.getMembers()) {
+                var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
+                if (rawMemberId.startsWith("minecraft")) continue;
+                if (ConquestDisambiguation(rawMemberId).endsWith(endMatch)) conquestMatches += 1;
+            }
+
+            var minecraftMatches = 0;
+            for (Block paintFamilyMember : paintFamily.getMembers()) {
+                var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
+                if (rawMemberId.startsWith("conquest")) continue;
+                if (ConquestDisambiguation(rawMemberId).endsWith(endMatch)) minecraftMatches += 1;
+            }
+
+            // If we haven't narrowed down our block list, we want to move on to search with a more specific tag
+            if (conquestMatches != 1 && minecraftMatches != 1) continue;
+
+            // Prioritize conquest, check for a minecraft block otherwise.
+            if (conquestMatches == 1) {
+                for (Block paintFamilyMember : paintFamily.getMembers()) {
+                    var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
+                    if (rawMemberId.startsWith("minecraft")) continue;
+                    if (!ConquestDisambiguation(rawMemberId).endsWith(endMatch)) continue;
+                    matchingBlock = paintFamilyMember;
+                }
+            } else {
+                for (Block paintFamilyMember : paintFamily.getMembers()) {
+                    var rawMemberId = Registries.BLOCK.getId(paintFamilyMember).toString();
+                    if (rawMemberId.startsWith("conquest")) continue;
+                    if (!ConquestDisambiguation(rawMemberId).endsWith(endMatch)) continue;
+                    matchingBlock = paintFamilyMember;
+                }
+            }
+
+            // If we for some reason still fail to find a block, break out of this loop.
+            if (matchingBlock == null) break;
+        }
+
+        return matchingBlock;
+    }
+
+    /**
+     * Normalizes block IDs by replacing multi-word shape names and layer terminology.
+     * This helps the suffix matcher properly identify block families without splitting on word boundaries.
+     * For example: "small_arch" becomes "smallarch", "layer" becomes "slab".
+     *
+     * @param input the block ID string to normalize
+     * @return the normalized block ID
+     */
+    private String ConquestDisambiguation(String input) {
         return input
                 .replaceAll("layer", "slab")
                 .replaceAll("small_arch_half", "smallarchhalf")

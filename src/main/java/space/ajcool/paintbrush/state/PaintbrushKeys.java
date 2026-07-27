@@ -10,17 +10,27 @@ import org.lwjgl.glfw.GLFW;
 import space.ajcool.paintbrush.Paintbrush;
 import space.ajcool.paintbrush.config.PaintbrushConfig;
 
+/**
+ * Manages keybindings for the Paintbrush mod.
+ * Registers the filter foliage toggle key (default: N) and its event handler.
+ */
 @Environment(EnvType.CLIENT)
-public final class PaintbrushKeys
-{
+public final class PaintbrushKeys {
+
+    /** Keybinding for toggling foliage filtering. */
     private static KeyBinding filterFoliage;
 
-    private PaintbrushKeys()
-    {
+    /**
+     * Private constructor to prevent instantiation.
+     */
+    private PaintbrushKeys() {
     }
 
-    public static void register()
-    {
+    /**
+     * Registers all paintbrush keybindings and their event handlers.
+     * The filter foliage key defaults to N and toggles FILTER_FOLIAGE config.
+     */
+    public static void register() {
         filterFoliage = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.paintbrush.filter_foliage",
                 InputUtil.Type.KEYSYM,
@@ -30,8 +40,7 @@ public final class PaintbrushKeys
 
         ClientTickEvents.END_CLIENT_TICK.register(client ->
         {
-            while (filterFoliage.wasPressed())
-            {
+            while (filterFoliage.wasPressed()) {
                 PaintbrushConfig.FILTER_FOLIAGE = !PaintbrushConfig.FILTER_FOLIAGE;
                 PaintbrushConfig.save();
             }

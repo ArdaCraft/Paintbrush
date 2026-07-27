@@ -16,16 +16,28 @@ import space.ajcool.paintbrush.filtering.FilteredRaycast;
 import space.ajcool.paintbrush.filtering.PaintbrushFilter;
 import space.ajcool.paintbrush.render.PaintbrushHighlightState;
 
+/**
+ * Mixin for GameRenderer to update raycasting behaviour with foliage filtering.
+ * When foliage filtering is enabled and the paintbrush/paint knife is held,
+ * makes foliage blocks transparent to targeting.
+ */
 @Mixin(GameRenderer.class)
-public class GameRendererMixin
-{
+public class GameRendererMixin {
+
+    /** The Minecraft client instance. */
     @Shadow
     @Final
     MinecraftClient client;
 
+    /**
+     * Injects into updateTargetedEntity to apply foliage filtering to crosshair targeting.
+     * Replaces the crosshair target with a filtered raycast when the initial target is foliage.
+     *
+     * @param tickDelta the time since the last tick
+     * @param ci        the callback info for this injection
+     */
     @Inject(method = "updateTargetedEntity", at = @At("TAIL"))
-    private void updateFilteredTarget(float tickDelta, CallbackInfo ci)
-    {
+    private void updateFilteredTarget(float tickDelta, CallbackInfo ci) {
         PaintbrushHighlightState.OCCLUDED = false;
 
         if (!PaintbrushConfig.FILTER_FOLIAGE) return;
@@ -42,8 +54,7 @@ public class GameRendererMixin
 
         client.crosshairTarget = FilteredRaycast.raycast(client.player, client.interactionManager.getReachDistance());
 
-        if (client.crosshairTarget.getType() == HitResult.Type.BLOCK)
-        {
+        if (client.crosshairTarget.getType() == HitResult.Type.BLOCK) {
             PaintbrushHighlightState.OCCLUDED = true;
         }
     }
