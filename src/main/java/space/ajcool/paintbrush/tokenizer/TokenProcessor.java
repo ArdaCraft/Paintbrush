@@ -25,7 +25,7 @@ public class TokenProcessor {
 
             if (blockFullName.contains(reservedName)) {
 
-                blockFullName = blockFullName.replaceAll(reservedName, "");
+                blockFullName = blockFullName.replace(reservedName, "");
                 break;
             }
         }

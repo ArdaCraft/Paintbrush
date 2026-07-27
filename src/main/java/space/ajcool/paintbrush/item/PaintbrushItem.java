@@ -7,6 +7,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
 import net.minecraft.block.enums.BlockHalf;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
@@ -193,145 +194,154 @@ public class PaintbrushItem extends Item
             {
                 var material = paintNbt.getString("material");
                 var paintIdentifier = new Identifier(material);
+                var paintBlock = Registries.BLOCK.get(paintIdentifier);
 
-                // Get the conquest family of the paint material
-                Family<Block> paintFamily = FamilyRegistry.BLOCKS.getFamily(paintIdentifier);
-
-                // Get the conquest family of the target material
-                var targetFamily = FamilyRegistry.BLOCKS.getFamily(targetBlockState.getBlock());
-
-                // Conquest splits the same material across several families (log / branch / beam).
-                // Redirect to the sibling family that corresponds to what we are painting over.
-                paintFamily = FamilyGroupRegistry.redirect(paintFamily, targetFamily);
-
-                // If the blocks are from the same family, lets not do anything.
-                if (targetFamily.getRoot().equals(paintFamily.getRoot())) continue;
-
-                // Use paint default state if the target block has no members or if it is the root of the family
-                if (targetFamily.getMembers().isEmpty() || paintFamily.getMembers().isEmpty())
+                if (paintBlock == Blocks.AIR)
                 {
-                    RegistryWrapper<Block> registryEntryLookup = player.getWorld() != null ? player.getWorld().createCommandRegistryWrapper(RegistryKeys.BLOCK) : Registries.BLOCK.getReadOnlyWrapper();
-
-                    sourcePaintBlockState = Registries.BLOCK.get(paintIdentifier).getDefaultState();
+                    sourcePaintBlockState = paintBlock.getDefaultState();
                 }
-                else if (targetBlockState.getBlock().equals(targetFamily.getRoot()))
-                {
-                    sourcePaintBlockState = paintFamily.getRoot().getDefaultState();
-                }
-                /*
-                 Find a match between the target block and the paint family
-                 copy its properties, account for edge-cases, and set the new block state
-                 */
                 else
                 {
-                    var layerMismatch = false;
-                    var tokenizerDebugOutput = paintNbt.getString("debug");
-                    var tokenizerDebugEnabled = tokenizerDebugOutput != null && !tokenizerDebugOutput.isBlank();
+                    var targetBlock = targetBlockState.getBlock();
+
+                    if (targetBlock == paintBlock) continue;
+
+                    // Get the conquest family of the paint material
+                    Family<Block> paintFamily = FamilyRegistry.BLOCKS.getFamily(paintBlock);
+
+                    // Get the conquest family of the target material
+                    var targetFamily = FamilyRegistry.BLOCKS.getFamily(targetBlock);
+
+                    // Conquest splits the same material across several families (log / branch / beam).
+                    // Redirect to the sibling family that corresponds to what we are painting over.
+                    paintFamily = FamilyGroupRegistry.redirect(paintFamily, targetFamily);
+
+                    // If the blocks are from the same family, lets not do anything.
+                    if (targetFamily.getRoot().equals(paintFamily.getRoot())) continue;
+
+                    // Use paint default state if the target block has no members or if it is the root of the family
+                    if (targetFamily.isAbsent() || paintFamily.isAbsent()
+                            || targetFamily.getMembers().isEmpty() || paintFamily.getMembers().isEmpty())
+                    {
+                        sourcePaintBlockState = paintBlock.getDefaultState();
+                    }
+                    else if (targetBlock.equals(targetFamily.getRoot()))
+                    {
+                        sourcePaintBlockState = familyRootOrPaint(paintFamily, paintBlock);
+                    }
+                    /*
+                     Find a match between the target block and the paint family
+                     copy its properties, account for edge-cases, and set the new block state
+                     */
+                    else
+                    {
+                        var layerMismatch = false;
+                        var tokenizerDebugOutput = paintNbt.getString("debug");
+                        var tokenizerDebugEnabled = tokenizerDebugOutput != null && !tokenizerDebugOutput.isBlank();
 
                     /*
                      Identify a list of block candidates for painting in a block family, then isolate a prime candidate
                      with priority conquest>other RP>minecraft
                      */
-                    List<Block> matchingBlocks = filterBlockCandidatesFromPaintFamily(targetBlockState, paintFamily, tokenizerDebugEnabled);
+                        List<Block> matchingBlocks = filterBlockCandidatesFromPaintFamily(targetBlockState, paintFamily, tokenizerDebugEnabled);
 
-                    Block matchingBlock = null;
+                        Block matchingBlock = null;
 
-                    if (matchingBlocks.size() == 1) matchingBlock = matchingBlocks.get(0);
+                        if (matchingBlocks.size() == 1) matchingBlock = matchingBlocks.get(0);
 
 
-                    // If at least a conquest block or a minecraft block has been found proceed with setup
-                    if (matchingBlock != null) {
+                        // If at least a conquest block or a minecraft block has been found proceed with setup
+                        if (matchingBlock != null) {
 
-                        sourcePaintBlockState = matchingBlock.getStateWithProperties(targetBlockState);
+                            sourcePaintBlockState = matchingBlock.getStateWithProperties(targetBlockState);
 
-                        var matchingBlockId = Registries.BLOCK.getId(matchingBlock).toString();
-                        Property<?> typeKey = targetBlockState.getBlock().getStateManager().getProperty("type");
+                            var matchingBlockId = Registries.BLOCK.getId(matchingBlock).toString();
+                            Property<?> typeKey = targetBlock.getStateManager().getProperty("type");
 
-                        if (typeKey != null) {
+                            if (typeKey != null) {
 
-                            Comparable<?> typeValue = targetBlockState.get(typeKey);
+                                Comparable<?> typeValue = targetBlockState.get(typeKey);
 
-                            if (typeValue.toString().equals("double")) {
-                                sourcePaintBlockState = paintFamily.getRoot().getDefaultState();
-                            } else if (matchingBlockId.endsWith("layer")) {
-                                if (typeValue.toString().equals("bottom")
-                                        && targetBlockState.getBlock().getStateManager().getProperty("layers") == null
-                                        && targetBlockState.getBlock().getStateManager().getProperty("layer") == null) {
-                                    sourcePaintBlockState = setLayerBlockState(sourcePaintBlockState);
-                                } else if (typeValue.toString().equals("top")) {
-                                    // If the target block has type=top, we can't use a layer-type with it.
-                                    sourcePaintBlockState = null;
-                                    layerMismatch = true;
+                                if (typeValue.toString().equals("double")) {
+                                    sourcePaintBlockState = familyRootOrPaint(paintFamily, paintBlock);
+                                } else if (matchingBlockId.endsWith("layer")) {
+                                    if (typeValue.toString().equals("bottom")
+                                            && targetBlock.getStateManager().getProperty("layers") == null
+                                            && targetBlock.getStateManager().getProperty("layer") == null) {
+                                        sourcePaintBlockState = setLayerBlockState(sourcePaintBlockState);
+                                    } else if (typeValue.toString().equals("top")) {
+                                        // If the target block has type=top, we can't use a layer-type with it.
+                                        sourcePaintBlockState = null;
+                                        layerMismatch = true;
+                                    }
+                                } else if (matchingBlockId.endsWith("slab")
+                                        && targetBlock.getStateManager().getProperty("layers") == null
+                                        && targetBlock.getStateManager().getProperty("layer") == null) {
+                                    var tempState = sourcePaintBlockState.with(Slab.TYPE_UPDOWN, typeValue.toString().equals("bottom") ? BlockHalf.BOTTOM : BlockHalf.TOP);
+                                    sourcePaintBlockState = setLayerBlockState(tempState);
                                 }
-                            } else if (matchingBlockId.endsWith("slab")
-                                    && targetBlockState.getBlock().getStateManager().getProperty("layers") == null
-                                    && targetBlockState.getBlock().getStateManager().getProperty("layer") == null) {
-                                var tempState = sourcePaintBlockState.with(Slab.TYPE_UPDOWN, typeValue.toString().equals("bottom") ? BlockHalf.BOTTOM : BlockHalf.TOP);
-                                sourcePaintBlockState = setLayerBlockState(tempState);
+                            }
+
+                            if (sourcePaintBlockState != null) {
+
+                                // Conquest uses two naming schemes for layered blocks, lets check if we're mismatching and convert between the two.
+                                var forwardLayerMismatch = targetBlock.getStateManager().getProperty("layers") != null && sourcePaintBlockState.getBlock().getStateManager().getProperty("layer") != null;
+                                var backwardLayerMismatch = targetBlock.getStateManager().getProperty("layer") != null && sourcePaintBlockState.getBlock().getStateManager().getProperty("layers") != null;
+
+                                if (forwardLayerMismatch || backwardLayerMismatch) {
+
+                                    var targetKey = targetBlock.getStateManager().getProperty(forwardLayerMismatch ? "layers" : "layer");
+                                    Integer targetValue = (Integer) targetBlockState.get(targetKey);
+
+                                    if (forwardLayerMismatch && targetValue == 8)
+                                        sourcePaintBlockState = familyRootOrPaint(paintFamily, paintBlock);
+                                    else if (forwardLayerMismatch && (targetValue == 3 || targetValue == 5 || targetValue > 6)) {
+                                        sourcePaintBlockState = null;
+                                        layerMismatch = true;
+                                    } else {
+                                        if (forwardLayerMismatch && targetValue == 4) targetValue = 3;
+                                        if (forwardLayerMismatch && targetValue == 6) targetValue = 4;
+
+                                        if (backwardLayerMismatch && targetValue == 4) targetValue = 6;
+                                        if (backwardLayerMismatch && targetValue == 3) targetValue = 4;
+
+                                        var paintKey = (IntProperty) sourcePaintBlockState.getBlock().getStateManager().getProperty(forwardLayerMismatch ? "layer" : "layers");
+                                        sourcePaintBlockState = sourcePaintBlockState.with(paintKey, targetValue);
+                                    }
+                                }
                             }
                         }
 
-                        if (sourcePaintBlockState != null) {
+                        // Handle error messages if block is not found.
+                        if (sourcePaintBlockState == null && world.isClient && brushSize == 1)
+                        {
+                            net.minecraft.text.MutableText errorMessage;
 
-                            // Conquest uses two naming schemes for layered blocks, lets check if we're mismatching and convert between the two.
-                            var forwardLayerMismatch = targetBlockState.getBlock().getStateManager().getProperty("layers") != null && sourcePaintBlockState.getBlock().getStateManager().getProperty("layer") != null;
-                            var backwardLayerMismatch = targetBlockState.getBlock().getStateManager().getProperty("layer") != null && sourcePaintBlockState.getBlock().getStateManager().getProperty("layers") != null;
+                            if (!layerMismatch)
+                            {
+                                errorMessage = Text.empty()
+                                        .append(Text.literal("Paintbrush:").formatted(Formatting.DARK_AQUA))
+                                        .append(Text.literal(" Target model ").formatted(Formatting.DARK_GRAY))
+                                        .append(Text.literal(Registries.BLOCK.getId(targetBlock).toString()).formatted(Formatting.GRAY))
+                                        .append(Text.literal(" can not be found in the family of ").formatted(Formatting.DARK_GRAY))
+                                        .append(Text.literal(material).formatted(Formatting.GRAY))
+                                        .append(Text.literal(". ").formatted(Formatting.DARK_GRAY));
 
-                            if (forwardLayerMismatch || backwardLayerMismatch) {
-
-                                var targetKey = targetBlockState.getBlock().getStateManager().getProperty(forwardLayerMismatch ? "layers" : "layer");
-                                Integer targetValue = (Integer) targetBlockState.get(targetKey);
-
-                                if (forwardLayerMismatch && targetValue == 8)
-                                    sourcePaintBlockState = paintFamily.getRoot().getDefaultState();
-                                else if (forwardLayerMismatch && (targetValue == 3 || targetValue == 5 || targetValue > 6)) {
-                                    sourcePaintBlockState = null;
-                                    layerMismatch = true;
-                                } else {
-                                    if (forwardLayerMismatch && targetValue == 4) targetValue = 3;
-                                    if (forwardLayerMismatch && targetValue == 6) targetValue = 4;
-
-                                    if (backwardLayerMismatch && targetValue == 4) targetValue = 6;
-                                    if (backwardLayerMismatch && targetValue == 3) targetValue = 4;
-
-                                    var paintKey = (IntProperty) sourcePaintBlockState.getBlock().getStateManager().getProperty(forwardLayerMismatch ? "layer" : "layers");
-                                    sourcePaintBlockState = sourcePaintBlockState.with(paintKey, targetValue);
-                                }
                             }
+                            else
+                            {
+                                errorMessage = Text.empty()
+                                        .append(Text.literal("Paintbrush:").formatted(Formatting.DARK_AQUA))
+                                        .append(Text.literal(" Target block layer is not supported by the selected paint material").formatted(Formatting.DARK_GRAY))
+                                        .append(Text.literal(". ").formatted(Formatting.DARK_GRAY));
+
+                            }
+
+                            player.sendMessage(errorMessage);
                         }
-                    }
-
-                    // Handle error messages if block is not found.
-                    if (sourcePaintBlockState == null && world.isClient && brushSize == 1)
-                    {
-                        net.minecraft.text.MutableText errorMessage;
-
-                        if (!layerMismatch)
-                        {
-                            errorMessage = Text.empty()
-                                    .append(Text.literal("Paintbrush:").formatted(Formatting.DARK_AQUA))
-                                    .append(Text.literal(" Target model ").formatted(Formatting.DARK_GRAY))
-                                    .append(Text.literal(Registries.BLOCK.getId(targetBlockState.getBlock()).toString()).formatted(Formatting.GRAY))
-                                    .append(Text.literal(" can not be found in the family of ").formatted(Formatting.DARK_GRAY))
-                                    .append(Text.literal(material).formatted(Formatting.GRAY))
-                                    .append(Text.literal(". ").formatted(Formatting.DARK_GRAY));
-
-                        }
-                        else
-                        {
-                            errorMessage = Text.empty()
-                                    .append(Text.literal("Paintbrush:").formatted(Formatting.DARK_AQUA))
-                                    .append(Text.literal(" Target block layer is not supported by the selected paint material").formatted(Formatting.DARK_GRAY))
-                                    .append(Text.literal(". ").formatted(Formatting.DARK_GRAY));
-
-                        }
-
-                        player.sendMessage(errorMessage);
                     }
                 }
             }
-
-            copySourceBlockStatePropertiesToTarget(sourcePaintBlockState, targetBlockState);
 
             if (sourcePaintBlockState != null)
                 blockStates.put(pos, sourcePaintBlockState);
@@ -370,28 +380,14 @@ public class PaintbrushItem extends Item
         return ActionResult.CONSUME;
     }
 
-    /**
-     * Copy all properties from the source block state to the target block state, except for "layer" and "layers" properties which are handled separately.
-     * @param source the block state from which to copy properties
-     * @param target the block state to which properties should be copied
-     */
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private void copySourceBlockStatePropertiesToTarget(BlockState source, BlockState target)
+    private static BlockState familyRootOrPaint(Family<Block> paintFamily, Block paintBlock)
     {
-        if (source != null) {
-
-            // Copy target state to paint block
-            for (Property<?> property : target.getProperties()) {
-
-                boolean isLayerProp = !"layers".equalsIgnoreCase(property.getName()) && !"layer".equalsIgnoreCase(property.getName());
-
-                if (!isLayerProp && source.contains(property)) {
-
-
-                    source = source.with((Property) property, target.get(property));
-                }
-            }
+        if (paintFamily.isAbsent() || paintFamily.getMembers().isEmpty())
+        {
+            return paintBlock.getDefaultState();
         }
+
+        return paintFamily.getRoot().getDefaultState();
     }
 
     private BlockState setLayerBlockState(BlockState paintBlockState)

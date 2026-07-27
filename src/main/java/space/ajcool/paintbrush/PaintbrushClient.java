@@ -108,7 +108,15 @@ public class PaintbrushClient implements ClientModInitializer
 			paintNbt.put("state", NbtHelper.fromBlockState(blockState));
 			iHaveAState = true;
 		}
-		else blockState = FamilyRegistry.BLOCKS.getFamily(material).getRoot().getDefaultState();
+		else
+		{
+			var paintFamily = FamilyRegistry.BLOCKS.getFamily(blockState.getBlock());
+
+			if (!paintFamily.isAbsent() && !paintFamily.getMembers().isEmpty())
+			{
+				blockState = paintFamily.getRoot().getDefaultState();
+			}
+		}
 
 		// Set display.Lore NBT so values are viewable in inventory
 		var displayNbt = itemStack.getOrCreateSubNbt("display");

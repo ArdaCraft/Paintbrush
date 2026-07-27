@@ -47,15 +47,13 @@ import space.ajcool.paintbrush.item.PaintKnifeItem;
 import space.ajcool.paintbrush.item.PaintbrushItem;
 import space.ajcool.paintbrush.item.TomatoItem;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.*;
 
 public class Paintbrush implements ModInitializer
 {
     public static final String ModID = "paintbrush";
     public static final Logger LOGGER = LoggerFactory.getLogger("paintbrush");
+    private static final int MAX_BLOCKS_PER_PACKET = 8192;
 
     public static final EntityType<TomatoEntity> TOMATO = FabricEntityTypeBuilder.<TomatoEntity>create(SpawnGroup.MISC, TomatoEntity::new)
             .dimensions(EntityDimensions.fixed(0.25F, 0.25F))
@@ -140,9 +138,14 @@ public class Paintbrush implements ModInitializer
         ServerPlayNetworking.registerGlobalReceiver(SET_BLOCK_PACKET_ID, (server, player, handler, buf, responseSender) ->
         {
             var blocksInPacket = buf.readInt();
+            if (blocksInPacket < 0 || blocksInPacket > MAX_BLOCKS_PER_PACKET)
+            {
+                LOGGER.warn("Dropping malformed paintbrush:set_block packet from {} with {} blocks", player.getName().getString(), blocksInPacket);
+                return;
+            }
 
-            var brushedBlocks = new HashMap<BlockPos, BlockState>();
-            AtomicBoolean canBreak = new AtomicBoolean(true);
+            record QueuedBlockState(BlockPos pos, net.minecraft.nbt.NbtCompound stateNbt) {}
+            List<QueuedBlockState> queuedBlocks = new ArrayList<>(blocksInPacket);
 
             for (int i = 1; i <= blocksInPacket; i++)
             {
@@ -150,35 +153,38 @@ public class Paintbrush implements ModInitializer
                 var blockStateNbt = buf.readNbt();
 
                 if (blockStateNbt == null || blockPos == null) continue;
-
-                RegistryWrapper<Block> registryEntryLookup = player.getWorld() != null ? player.getWorld().createCommandRegistryWrapper(RegistryKeys.BLOCK) : Registries.BLOCK.getReadOnlyWrapper();
-                var blockState = NbtHelper.toBlockState(registryEntryLookup, blockStateNbt);
-
-                server.execute(() ->
-                {
-                    var world = player.getWorld();
-                    var blockEntity = world.getBlockEntity(blockPos);
-
-                    if (canBreak.get())
-                        canBreak.set(PlayerBlockBreakEvents.BEFORE.invoker().beforeBlockBreak(world, player, blockPos, blockState, blockEntity));
-
-                    brushedBlocks.put(blockPos, blockState);
-                });
+                queuedBlocks.add(new QueuedBlockState(blockPos, blockStateNbt));
             }
 
-            if (!canBreak.get())
-            {
-                var errorMessage = Text.empty()
-                        .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                        .append(Text.literal("Unable to alter targeted blocks.").formatted(Formatting.DARK_GRAY));
-
-                player.sendMessage(errorMessage);
-
-                return;
-            }
+            if (queuedBlocks.isEmpty()) return;
 
             server.execute(() ->
             {
+                var world = player.getWorld();
+
+                RegistryWrapper<Block> registryEntryLookup = world != null ? world.createCommandRegistryWrapper(RegistryKeys.BLOCK) : Registries.BLOCK.getReadOnlyWrapper();
+                var brushedBlocks = new LinkedHashMap<BlockPos, BlockState>();
+
+                for (var queuedBlock : queuedBlocks)
+                {
+                    var blockState = NbtHelper.toBlockState(registryEntryLookup, queuedBlock.stateNbt());
+                    brushedBlocks.put(queuedBlock.pos(), blockState);
+
+                    if (world == null) continue;
+
+                    var blockEntity = world.getBlockEntity(queuedBlock.pos());
+                    var canBreak = PlayerBlockBreakEvents.BEFORE.invoker().beforeBlockBreak(world, player, queuedBlock.pos(), blockState, blockEntity);
+                    if (!canBreak)
+                    {
+                        var errorMessage = Text.empty()
+                                .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                                .append(Text.literal("Unable to alter targeted blocks.").formatted(Formatting.DARK_GRAY));
+
+                        player.sendMessage(errorMessage);
+                        return;
+                    }
+                }
+
                 LocalSession session = WorldEdit.getInstance().getSessionManager().findByName(player.getName().getString());
 
                 if (session == null) return;
@@ -295,7 +301,7 @@ public class Paintbrush implements ModInitializer
 
                 player.sendMessage(message);
 
-                return Command.SINGLE_SUCCESS;
+                return 0;
             }
 
             var itemStack = player.getInventory().getMainHandStack();
@@ -306,7 +312,7 @@ public class Paintbrush implements ModInitializer
                         .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
                         .append(Text.literal("You must have a paintbrush in your main hand to set the brush size.").formatted(Formatting.RED)));
 
-                return Command.SINGLE_SUCCESS;
+                return 0;
             }
 
             var paintNbt = itemStack.getOrCreateSubNbt("paintbrush");
