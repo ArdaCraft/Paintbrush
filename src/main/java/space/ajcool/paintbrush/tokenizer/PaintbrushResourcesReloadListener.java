@@ -6,21 +6,24 @@ import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.minecraft.resource.ResourceManager;
 import net.minecraft.util.Identifier;
 import space.ajcool.paintbrush.family.FamilyGroupRegistry;
+import space.ajcool.paintbrush.filtering.PaintbrushFilter;
 
 @Environment(EnvType.CLIENT)
-public class TokenReloadListener implements SimpleSynchronousResourceReloadListener {
-
-    private static final Identifier ID = new Identifier("paintbrush", "token_reload");
+public class PaintbrushResourcesReloadListener implements SimpleSynchronousResourceReloadListener
+{
+    private static final Identifier ID = new Identifier("paintbrush", "resources_reload");
 
     @Override
-    public Identifier getFabricId() {
+    public Identifier getFabricId()
+    {
         return ID;
     }
 
     @Override
-    public void reload(ResourceManager manager) {
-
+    public void reload(ResourceManager manager)
+    {
         TokenLoader.load();
         FamilyGroupRegistry.load();
+        PaintbrushFilter.load();
     }
 }

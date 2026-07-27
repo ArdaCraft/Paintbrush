@@ -1,11 +1,9 @@
 package space.ajcool.paintbrush;
 
-import com.conquestrefabricated.core.item.family.Family;
 import com.conquestrefabricated.core.item.family.FamilyRegistry;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -14,10 +12,11 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
-import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.render.entity.FlyingItemEntityRenderer;
@@ -37,11 +36,10 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import space.ajcool.paintbrush.config.PaintbrushConfig;
 import space.ajcool.paintbrush.family.FamilyGroupRegistry;
-import space.ajcool.paintbrush.tokenizer.TokenLoader;
+import space.ajcool.paintbrush.render.PaintbrushHighlightRenderer;
+import space.ajcool.paintbrush.state.PaintbrushKeys;
+import space.ajcool.paintbrush.tokenizer.PaintbrushResourcesReloadListener;
 import space.ajcool.paintbrush.tokenizer.TokenRegistry;
-import space.ajcool.paintbrush.tokenizer.TokenReloadListener;
-
-import java.util.Iterator;
 
 import static space.ajcool.paintbrush.Paintbrush.*;
 import static space.ajcool.paintbrush.item.PaintKnifeItem.changeBlockLayer;
@@ -53,6 +51,7 @@ public class PaintbrushClient implements ClientModInitializer
 	public void onInitializeClient()
 	{
         PaintbrushConfig.load();
+        PaintbrushKeys.register();
 
 		EntityRendererRegistry.register(Paintbrush.TOMATO, FlyingItemEntityRenderer::new);
 
@@ -75,9 +74,18 @@ public class PaintbrushClient implements ClientModInitializer
             configurePaintKnifeCommand("pk", dispatcher);
         });
 
+        HudRenderCallback.EVENT.register((drawContext, tickDelta) ->
+        {
+            if (!PaintbrushConfig.FILTER_FOLIAGE) return;
+
+            drawContext.drawText(MinecraftClient.getInstance().textRenderer, Text.translatable("paintbrush.filtering_foliage"), 20, 20, 0xFFFFFFFF, true);
+        });
+
+        WorldRenderEvents.LAST.register(PaintbrushHighlightRenderer::render);
+
         // Token management
         ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES)
-                .registerReloadListener(new TokenReloadListener());
+                .registerReloadListener(new PaintbrushResourcesReloadListener());
 	}
 
 	private ActionResult handlePaintbrushInteraction(PlayerEntity player, ItemStack itemStack, BlockPos pos)
@@ -164,6 +172,10 @@ public class PaintbrushClient implements ClientModInitializer
     private void configureClientCommand(String commandName, CommandDispatcher<FabricClientCommandSource> dispatcher)
     {
         dispatcher.register(ClientCommandManager.literal(commandName)
+                .then(ClientCommandManager.literal("filter")
+                        .executes(this::showFilterState)
+                    .then(ClientCommandManager.literal("toggle")
+                            .executes(this::toggleFilterFoliage)))
                 .then(ClientCommandManager.literal("debug")
                         .executes(this::toggleTokenizerDebugOutput)
                     .then(ClientCommandManager.literal("showTokens")
@@ -171,6 +183,32 @@ public class PaintbrushClient implements ClientModInitializer
                     .then(ClientCommandManager.literal("showFamily")
                             .executes(this::showFamily)))
         );
+    }
+
+    private int showFilterState(CommandContext<FabricClientCommandSource> context)
+    {
+        var player = context.getSource().getPlayer();
+
+        if (player != null)
+        {
+            sendToggleMessage(player, "Foliage filtering", PaintbrushConfig.FILTER_FOLIAGE);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private int toggleFilterFoliage(CommandContext<FabricClientCommandSource> context)
+    {
+        PaintbrushConfig.FILTER_FOLIAGE = !PaintbrushConfig.FILTER_FOLIAGE;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null)
+        {
+            sendToggleMessage(player, "Foliage filtering", PaintbrushConfig.FILTER_FOLIAGE);
+        }
+
+        return Command.SINGLE_SUCCESS;
     }
 
     private void configurePaintKnifeCommand(String commandName, CommandDispatcher<FabricClientCommandSource> dispatcher)
@@ -185,7 +223,7 @@ public class PaintbrushClient implements ClientModInitializer
         );
     }
 
-    private int showPaintKnifeSettings(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    private int showPaintKnifeSettings(CommandContext<FabricClientCommandSource> context)
     {
         var player = context.getSource().getPlayer();
 
@@ -198,7 +236,7 @@ public class PaintbrushClient implements ClientModInitializer
         return Command.SINGLE_SUCCESS;
     }
 
-    private int togglePaintKnifeDelete(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    private int togglePaintKnifeDelete(CommandContext<FabricClientCommandSource> context)
     {
         PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE = !PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE;
         PaintbrushConfig.save();
@@ -212,7 +250,7 @@ public class PaintbrushClient implements ClientModInitializer
         return Command.SINGLE_SUCCESS;
     }
 
-    private int togglePaintKnifeAppend(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    private int togglePaintKnifeAppend(CommandContext<FabricClientCommandSource> context)
     {
         PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND = !PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND;
         PaintbrushConfig.save();
@@ -236,7 +274,7 @@ public class PaintbrushClient implements ClientModInitializer
         player.sendMessage(message);
     }
 
-    private int showLoadedTokens(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    private int showLoadedTokens(CommandContext<FabricClientCommandSource> context)
     {
         StringBuilder builder = new StringBuilder("Paintbrush - Reserved names :\n");
 
@@ -261,7 +299,7 @@ public class PaintbrushClient implements ClientModInitializer
         return Command.SINGLE_SUCCESS;
     }
 
-    private int showFamily(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    private int showFamily(CommandContext<FabricClientCommandSource> context)
     {
         var player = context.getSource().getPlayer();
         if (player == null) return Command.SINGLE_SUCCESS;
@@ -305,7 +343,7 @@ public class PaintbrushClient implements ClientModInitializer
         return Command.SINGLE_SUCCESS;
     }
 
-    private int toggleTokenizerDebugOutput(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    private int toggleTokenizerDebugOutput(CommandContext<FabricClientCommandSource> context)
     {
 
         var player = context.getSource().getPlayer();

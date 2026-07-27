@@ -138,7 +138,7 @@ public class PaintKnifeItem extends Item
             return newState == null ? null : new LayerChange(targetPos, newState);
         }
 
-        if (delta >= 0) return null;
+        if (delta == 0) return null;
 
         var newState = buildLayerState(family, direction, -1);
         return newState == null ? null : new LayerChange(pos, newState);

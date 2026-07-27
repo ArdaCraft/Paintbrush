@@ -1,11 +1,11 @@
 package space.ajcool.paintbrush.tokenizer;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.resource.Resource;
-import net.minecraft.resource.ResourceManager;
 import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -5,7 +5,6 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.LocalSession;
 import com.sk89q.worldedit.MaxChangedBlocksException;
@@ -23,7 +22,6 @@ import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityTypeBuilder;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
-import net.minecraft.command.CommandException;
 import net.minecraft.entity.EntityDimensions;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.SpawnGroup;
@@ -37,7 +35,10 @@ import net.minecraft.registry.*;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.text.Text;
-import net.minecraft.util.*;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.Rarity;
 import net.minecraft.util.math.BlockPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +47,9 @@ import space.ajcool.paintbrush.item.PaintKnifeItem;
 import space.ajcool.paintbrush.item.PaintbrushItem;
 import space.ajcool.paintbrush.item.TomatoItem;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Paintbrush implements ModInitializer
@@ -205,9 +208,7 @@ public class Paintbrush implements ModInitializer
             if (itemstack == null) return;
 
             server.execute(() ->
-            {
-                player.getInventory().setStack(slot, itemstack);
-            });
+                    player.getInventory().setStack(slot, itemstack));
         });
 
         // Registering commands
@@ -223,10 +224,14 @@ public class Paintbrush implements ModInitializer
         dispatcher.register(CommandManager.literal(commandName)
                 .executes(this::PaintBrushCommand)
                 .then(CommandManager.literal("hand")
-                        .executes(context -> handleHandToggleCommand(context)))
+                        .executes(this::handleHandToggleCommand))
                 .then(CommandManager.literal("size")
                         .then(CommandManager.argument("value", IntegerArgumentType.integer())
                                 .executes(this::setBrushSize)))
+                .then(CommandManager.literal("filter")
+                        .executes(ctx -> 1)
+                    .then(CommandManager.literal("toggle")
+                            .executes(ctx -> 1)))
                 .then(CommandManager.literal("debug")
                         .executes(ctx -> 1)
                     .then(CommandManager.literal("showTokens")
@@ -236,7 +241,7 @@ public class Paintbrush implements ModInitializer
         );
     }
 
-    private int handleHandToggleCommand(CommandContext<ServerCommandSource> context) throws CommandSyntaxException
+    private int handleHandToggleCommand(CommandContext<ServerCommandSource> context)
     {
         var player = context.getSource().getPlayer();
 
@@ -274,7 +279,7 @@ public class Paintbrush implements ModInitializer
         return Command.SINGLE_SUCCESS;
     }
 
-    private int setBrushSize(CommandContext<ServerCommandSource> context) throws CommandSyntaxException
+    private int setBrushSize(CommandContext<ServerCommandSource> context)
     {
         var player = context.getSource().getPlayer();
 

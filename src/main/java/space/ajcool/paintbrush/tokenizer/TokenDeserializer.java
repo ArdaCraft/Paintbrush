@@ -1,6 +1,5 @@
 package space.ajcool.paintbrush.tokenizer;
 
-import com.google.common.reflect.TypeToken;
 import com.google.gson.*;
 
 import java.lang.reflect.Type;

@@ -1,0 +1,40 @@
+package space.ajcool.paintbrush.state;
+
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
+import org.lwjgl.glfw.GLFW;
+import space.ajcool.paintbrush.Paintbrush;
+import space.ajcool.paintbrush.config.PaintbrushConfig;
+
+@Environment(EnvType.CLIENT)
+public final class PaintbrushKeys
+{
+    private static KeyBinding filterFoliage;
+
+    private PaintbrushKeys()
+    {
+    }
+
+    public static void register()
+    {
+        filterFoliage = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.paintbrush.filter_foliage",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_N,
+                "category." + Paintbrush.ModID
+        ));
+
+        ClientTickEvents.END_CLIENT_TICK.register(client ->
+        {
+            while (filterFoliage.wasPressed())
+            {
+                PaintbrushConfig.FILTER_FOLIAGE = !PaintbrushConfig.FILTER_FOLIAGE;
+                PaintbrushConfig.save();
+            }
+        });
+    }
+}

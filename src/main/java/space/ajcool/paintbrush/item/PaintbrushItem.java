@@ -25,7 +25,9 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import space.ajcool.paintbrush.Paintbrush;
+import space.ajcool.paintbrush.config.PaintbrushConfig;
 import space.ajcool.paintbrush.family.FamilyGroupRegistry;
+import space.ajcool.paintbrush.filtering.PaintbrushFilter;
 import space.ajcool.paintbrush.tokenizer.TokenProcessor;
 
 import java.util.*;
@@ -169,33 +171,14 @@ public class PaintbrushItem extends Item
         var paintNbt = itemStack.getOrCreateSubNbt("paintbrush");
 
         var brushSize = paintNbt.contains("size") ? paintNbt.getInt("size") : 1;
-        var positions = new ArrayList<BlockPos>();
-
-        if (brushSize == 1) positions.add(blockPos);
-
-        if (brushSize > 1)
-        {
-            brushSize -= 1;
-
-            for(int x = -brushSize; x <= brushSize; x++) {
-                for(int y = -brushSize; y <= brushSize; y++) {
-                    for(int z = -brushSize; z <= brushSize; z++) {
-                        if(x * x + y * y + z * z <= brushSize * brushSize) {
-                            positions.add(blockPos.add(x, y, z));
-                        }
-                    }
-                }
-            }
-        }
+        var positions = PaintbrushVolume.collect(world, blockPos, brushSize);
 
         var blockStates = new HashMap<BlockPos, BlockState>();
 
         for(BlockPos pos : positions) {
 
             var targetBlockState = world.getBlockState(pos);
-            var isFluid = targetBlockState.getFluidState() != null && !targetBlockState.getFluidState().isEmpty();
-
-            if (!world.canSetBlock(pos) || targetBlockState.isAir() || isFluid) continue;
+            if (!PaintbrushVolume.isPaintable(world, pos)) continue;
 
             BlockState sourcePaintBlockState = null;
 
