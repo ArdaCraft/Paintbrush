@@ -223,11 +223,11 @@ public class PaintbrushItem extends Item
                     if (targetFamily.isAbsent() || paintFamily.isAbsent()
                             || targetFamily.getMembers().isEmpty() || paintFamily.getMembers().isEmpty())
                     {
-                        sourcePaintBlockState = paintBlock.getDefaultState();
+                        sourcePaintBlockState = paintBlock.getStateWithProperties(targetBlockState);
                     }
                     else if (targetBlock.equals(targetFamily.getRoot()))
                     {
-                        sourcePaintBlockState = familyRootOrPaint(paintFamily, paintBlock);
+                        sourcePaintBlockState = familyRootOrPaint(paintFamily, paintBlock, targetBlockState);
                     }
                     /*
                      Find a match between the target block and the paint family
@@ -263,7 +263,7 @@ public class PaintbrushItem extends Item
                                 Comparable<?> typeValue = targetBlockState.get(typeKey);
 
                                 if (typeValue.toString().equals("double")) {
-                                    sourcePaintBlockState = familyRootOrPaint(paintFamily, paintBlock);
+                                    sourcePaintBlockState = familyRootOrPaint(paintFamily, paintBlock, targetBlockState);
                                 } else if (matchingBlockId.endsWith("layer")) {
                                     if (typeValue.toString().equals("bottom")
                                             && targetBlock.getStateManager().getProperty("layers") == null
@@ -294,7 +294,7 @@ public class PaintbrushItem extends Item
                                     Integer targetValue = (Integer) targetBlockState.get(targetKey);
 
                                     if (forwardLayerMismatch && targetValue == 8)
-                                        sourcePaintBlockState = familyRootOrPaint(paintFamily, paintBlock);
+                                        sourcePaintBlockState = familyRootOrPaint(paintFamily, paintBlock, targetBlockState);
                                     else if (forwardLayerMismatch && (targetValue == 3 || targetValue == 5 || targetValue > 6)) {
                                         sourcePaintBlockState = null;
                                         layerMismatch = true;
@@ -380,14 +380,14 @@ public class PaintbrushItem extends Item
         return ActionResult.CONSUME;
     }
 
-    private static BlockState familyRootOrPaint(Family<Block> paintFamily, Block paintBlock)
+    private static BlockState familyRootOrPaint(Family<Block> paintFamily, Block paintBlock, BlockState targetBlockState)
     {
         if (paintFamily.isAbsent() || paintFamily.getMembers().isEmpty())
         {
-            return paintBlock.getDefaultState();
+            return paintBlock.getStateWithProperties(targetBlockState);
         }
 
-        return paintFamily.getRoot().getDefaultState();
+        return paintFamily.getRoot().getStateWithProperties(targetBlockState);
     }
 
     private BlockState setLayerBlockState(BlockState paintBlockState)

@@ -99,7 +99,7 @@ public class PaintKnifeItem extends Item
             var value = state.get(layerProp);
 
             if (delta > 0
-                    && value >= fullBlockEquivalent(layerProp)
+                    && value >= maxValue(layerProp)
                     && !layerProp.getName().equals("level")
                     && isSwappableLayerMember(state.getBlock()))
             {
@@ -243,7 +243,7 @@ public class PaintKnifeItem extends Item
         if (layerProp == null) return null;
 
         var targetValue = value < 0
-                ? fullBlockEquivalent(layerProp)
+                ? maxValue(layerProp)
                 : Math.max(minValue(layerProp), Math.min(value, maxValue(layerProp)));
 
         if (!layerProp.getValues().contains(targetValue)) return null;
@@ -259,12 +259,6 @@ public class PaintKnifeItem extends Item
     private static int minValue(IntProperty property)
     {
         return property.getValues().stream().min(Integer::compareTo).orElse(0);
-    }
-
-    private static int fullBlockEquivalent(IntProperty property)
-    {
-        var max = maxValue(property);
-        return max == 8 ? max - 1 : max;
     }
 
     private static boolean isSwappableLayerMember(Block block)
