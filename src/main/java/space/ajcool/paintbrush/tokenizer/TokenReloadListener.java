@@ -5,6 +5,7 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.minecraft.resource.ResourceManager;
 import net.minecraft.util.Identifier;
+import space.ajcool.paintbrush.family.FamilyGroupRegistry;
 
 @Environment(EnvType.CLIENT)
 public class TokenReloadListener implements SimpleSynchronousResourceReloadListener {
@@ -20,5 +21,6 @@ public class TokenReloadListener implements SimpleSynchronousResourceReloadListe
     public void reload(ResourceManager manager) {
 
         TokenLoader.load();
+        FamilyGroupRegistry.load();
     }
 }

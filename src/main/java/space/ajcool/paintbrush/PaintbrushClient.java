@@ -31,9 +31,12 @@ import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import space.ajcool.paintbrush.config.PaintbrushConfig;
+import space.ajcool.paintbrush.family.FamilyGroupRegistry;
 import space.ajcool.paintbrush.tokenizer.TokenLoader;
 import space.ajcool.paintbrush.tokenizer.TokenRegistry;
 import space.ajcool.paintbrush.tokenizer.TokenReloadListener;
@@ -164,7 +167,9 @@ public class PaintbrushClient implements ClientModInitializer
                 .then(ClientCommandManager.literal("debug")
                         .executes(this::toggleTokenizerDebugOutput)
                     .then(ClientCommandManager.literal("showTokens")
-                            .executes(this::showLoadedTokens)))
+                            .executes(this::showLoadedTokens))
+                    .then(ClientCommandManager.literal("showFamily")
+                            .executes(this::showFamily)))
         );
     }
 
@@ -252,6 +257,50 @@ public class PaintbrushClient implements ClientModInitializer
         }
 
         LOGGER.info(builder.toString());
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private int showFamily(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
+    {
+        var player = context.getSource().getPlayer();
+        if (player == null) return Command.SINGLE_SUCCESS;
+
+        var client = MinecraftClient.getInstance();
+        var hitResult = player.raycast(20.0D, client.getTickDelta(), false);
+
+        if (hitResult.getType() != HitResult.Type.BLOCK)
+        {
+            player.sendMessage(Text.literal("Paintbrush: No block targeted.").formatted(Formatting.RED));
+            return Command.SINGLE_SUCCESS;
+        }
+
+        var blockPos = ((BlockHitResult) hitResult).getBlockPos();
+        var blockState = player.getWorld().getBlockState(blockPos);
+        var block = blockState.getBlock();
+        var family = FamilyRegistry.BLOCKS.getFamily(block);
+        var blockId = Registries.BLOCK.getId(block).toString();
+
+        if (family == null)
+        {
+            var message = Text.empty()
+                    .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                    .append(Text.literal(blockId + " has no family").formatted(Formatting.GRAY));
+
+            player.sendMessage(message);
+            LOGGER.info("Paintbrush - Family debug: block={} family=none", blockId);
+            return Command.SINGLE_SUCCESS;
+        }
+
+        var familyRootId = Registries.BLOCK.getId(family.getRoot()).toString();
+        var groupDescription = FamilyGroupRegistry.describe(block).orElse("none");
+
+        var message = Text.empty()
+                .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                .append(Text.literal(blockId + " family=" + familyRootId + " members=" + family.getMembers().size() + " group=" + groupDescription).formatted(Formatting.GRAY));
+
+        player.sendMessage(message);
+        LOGGER.info("Paintbrush - Family debug: block={} family={} members={} group={}", blockId, familyRootId, family.getMembers().size(), groupDescription);
 
         return Command.SINGLE_SUCCESS;
     }

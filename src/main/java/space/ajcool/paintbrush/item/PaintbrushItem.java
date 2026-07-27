@@ -25,6 +25,7 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import space.ajcool.paintbrush.Paintbrush;
+import space.ajcool.paintbrush.family.FamilyGroupRegistry;
 import space.ajcool.paintbrush.tokenizer.TokenProcessor;
 
 import java.util.*;
@@ -211,10 +212,14 @@ public class PaintbrushItem extends Item
                 var paintIdentifier = new Identifier(material);
 
                 // Get the conquest family of the paint material
-                var paintFamily = FamilyRegistry.BLOCKS.getFamily(paintIdentifier);
+                Family<Block> paintFamily = FamilyRegistry.BLOCKS.getFamily(paintIdentifier);
 
                 // Get the conquest family of the target material
                 var targetFamily = FamilyRegistry.BLOCKS.getFamily(targetBlockState.getBlock());
+
+                // Conquest splits the same material across several families (log / branch / beam).
+                // Redirect to the sibling family that corresponds to what we are painting over.
+                paintFamily = FamilyGroupRegistry.redirect(paintFamily, targetFamily);
 
                 // If the blocks are from the same family, lets not do anything.
                 if (targetFamily.getRoot().equals(paintFamily.getRoot())) continue;

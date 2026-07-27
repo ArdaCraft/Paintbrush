@@ -1,0 +1,31 @@
+{
+  "groups": [
+    {
+      "name": "wood_logs_branches_beams",
+      "families": [
+        {
+          "id": "logs",
+          "anchors": [
+            "conquest:{material}_log_vertical_slab",
+            "conquest:{material}_log_slab",
+            "conquest:{material}_log_pillar"
+          ]
+        },
+        {
+          "id": "branches",
+          "anchors": [
+            "conquest:{material}_branch_tip",
+            "conquest:thick_diagonal_{material}_branch_22"
+          ]
+        },
+        {
+          "id": "beams",
+          "anchors": [
+            "conquest:{material}_wood_beam_wall",
+            "conquest:{material}_wood_beam"
+          ]
+        }
+      ]
+    }
+  ]
+}

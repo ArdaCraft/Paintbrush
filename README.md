@@ -14,7 +14,7 @@ Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to 
 
 ### Secondary click:
 
-- With a **paintbrush** to paint the selected material onto the targeted block. This attempts to find the same block variant in a material's conquest family (see [Configuration](#Configuration)).
+- With a **paintbrush** to paint the selected material onto the targeted block. This attempts to find the same block variant in a material's Conquest family, including configured linked family groups such as logs, branches, and beams (see [Configuration](#configuration)).
 - With a **paint knife** will increase the layer of a targeted block if it has layer properties.
 - With a **paint knife** on a near-full layer/slab block will promote it to the full block in the same Conquest family.
 - With a **paint knife** on a full block will append a layer-1 slab in the clicked adjacent space when paint knife append is enabled and the target space is replaceable.
@@ -52,6 +52,50 @@ Some blocks may contain a matching token in their names : `Red Brown Vertical Wo
 
 The tokens.json file supports expansion using `( )`, any characters in parenthesis will resolve into two distinct tokens or reserved name : `board(s)` expands into `board` and `boards`  
 
+### Linked family groups
+
+Some Conquest materials are split across multiple block families even though they are the same material in different shapes. For example, logs, branches, and beams can each have their own family. Paintbrush can link these families through [family-groups.json](src/main/resources/assets/paintbrush/family-groups.json), so selecting one shape can paint the corresponding shape in a sibling family.
+
+```json
+{
+  "groups": [
+    {
+      "name": "wood_logs_branches_beams",
+      "families": [
+        {
+          "id": "logs",
+          "anchors": [
+            "conquest:{material}_log_vertical_slab",
+            "conquest:{material}_log_slab",
+            "conquest:{material}_log_pillar"
+          ]
+        },
+        {
+          "id": "branches",
+          "anchors": [
+            "conquest:{material}_branch_tip",
+            "conquest:thick_diagonal_{material}_branch_22"
+          ]
+        },
+        {
+          "id": "beams",
+          "anchors": [
+            "conquest:{material}_wood_beam_wall",
+            "conquest:{material}_wood_beam"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Each family entry has a display `id` and one or more concrete block-id `anchors`. Anchors are matched against any member of a family, not the family root, because Conquest family roots are registration-order artifacts. `{material}` captures the material name and is substituted into the target family's anchors. For example, when painting with a birch log material over an oak branch, Paintbrush can redirect from the birch log family to the birch branch family before the normal token matching runs.
+
+Anchors without `{material}` are allowed and match literal block ids. This lets resource packs link one-off families without adding code.
+
+The included `family-groups.json` links wood logs, branches, and beams. Verify custom resource-pack changes in-game with `/pb debug showFamily`, then reload resources with `F3+T`.
+
 ### Debug commands
 
 - `pb debug` or `paintbrush debug` toggles the logging of information during pattern matching : 
@@ -70,6 +114,8 @@ The tokens.json file supports expansion using `( )`, any characters in parenthes
 ```
 
 - `pb debug showTokens` or `paintbrush debug showTokens` logs the current loaded tokens and reserved names in the console.
+
+- `pb debug showFamily` or `paintbrush debug showFamily` logs and chats the targeted block id, its family root id, member count, linked family group match, and the anchor member that matched. Use this when authoring `family-groups.json`.
 
 ### Developers Notes
 

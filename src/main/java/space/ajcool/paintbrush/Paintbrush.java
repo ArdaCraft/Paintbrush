@@ -230,6 +230,8 @@ public class Paintbrush implements ModInitializer
                 .then(CommandManager.literal("debug")
                         .executes(ctx -> 1)
                     .then(CommandManager.literal("showTokens")
+                            .executes(ctx -> 1))
+                    .then(CommandManager.literal("showFamily")
                             .executes(ctx -> 1)))
         );
     }
