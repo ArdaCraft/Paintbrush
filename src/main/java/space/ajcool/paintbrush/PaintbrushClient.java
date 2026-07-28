@@ -10,6 +10,7 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
@@ -37,12 +38,12 @@ import net.minecraft.util.math.Direction;
 import space.ajcool.paintbrush.config.FullBlockMode;
 import space.ajcool.paintbrush.config.PaintbrushConfig;
 import space.ajcool.paintbrush.family.FamilyGroupRegistry;
+import space.ajcool.paintbrush.item.PaintKnifeItem.LayerChangeOutcome;
+import space.ajcool.paintbrush.item.PaintKnifeItem.LayerChangeResult;
 import space.ajcool.paintbrush.render.PaintbrushHighlightRenderer;
 import space.ajcool.paintbrush.state.PaintbrushKeys;
 import space.ajcool.paintbrush.tokenizer.PaintbrushResourcesReloadListener;
 import space.ajcool.paintbrush.tokenizer.TokenRegistry;
-import space.ajcool.paintbrush.item.PaintKnifeItem.LayerChangeOutcome;
-import space.ajcool.paintbrush.item.PaintKnifeItem.LayerChangeResult;
 
 import static space.ajcool.paintbrush.Paintbrush.*;
 import static space.ajcool.paintbrush.item.PaintKnifeItem.changeBlockLayer;
@@ -63,6 +64,17 @@ public class PaintbrushClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         PaintbrushConfig.load();
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
+        {
+            var player = client.player;
+            if (player == null) return;
+
+            Paintbrush.setBlockTogglesDisabled(player.getUuid(), PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
+
+            var packetBuffer = PacketByteBufs.create();
+            packetBuffer.writeBoolean(PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
+            ClientPlayNetworking.send(SET_BLOCK_TOGGLES_PACKET_ID, packetBuffer);
+        });
         PaintbrushKeys.register();
 
         EntityRendererRegistry.register(Paintbrush.TOMATO, FlyingItemEntityRenderer::new);
@@ -441,11 +453,6 @@ public class PaintbrushClient implements ClientModInitializer {
 
         var player = context.getSource().getPlayer();
         if (player != null) {
-            var message = Text.empty()
-                    .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                    .append(Text.literal("Added a paint knife to inventory!").formatted(Formatting.DARK_GRAY));
-
-            player.sendMessage(message);
             showPaintKnifeSettings(player);
         }
 
@@ -528,6 +535,13 @@ public class PaintbrushClient implements ClientModInitializer {
         return Command.SINGLE_SUCCESS;
     }
 
+    /**
+     * Sets the paint knife full-block promotion mode and saves the configuration.
+     *
+     * @param context the command context
+     * @param mode    the full-block promotion mode to set
+     * @return 1 if successful
+     */
     @SuppressWarnings("SameReturnValue")
     private int setFullBlocks(CommandContext<FabricClientCommandSource> context, FullBlockMode mode) {
         PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS = mode;
@@ -541,6 +555,12 @@ public class PaintbrushClient implements ClientModInitializer {
         return Command.SINGLE_SUCCESS;
     }
 
+    /**
+     * Toggles paint knife debug output and saves the configuration.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
     @SuppressWarnings("SameReturnValue")
     private int togglePaintKnifeDebug(CommandContext<FabricClientCommandSource> context) {
         PaintbrushConfig.PAINTKNIFE_DEBUG = !PaintbrushConfig.PAINTKNIFE_DEBUG;
@@ -554,6 +574,12 @@ public class PaintbrushClient implements ClientModInitializer {
         return Command.SINGLE_SUCCESS;
     }
 
+    /**
+     * Converts a LayerChangeResult outcome into a human-readable string for debugging.
+     *
+     * @param result the layer change result to describe
+     * @return a string representation of the outcome
+     */
     private String describePaintKnifeOutcome(LayerChangeResult result) {
         return switch (result.outcome()) {
             case SENT -> "SENT";
@@ -579,6 +605,14 @@ public class PaintbrushClient implements ClientModInitializer {
         player.sendMessage(message);
     }
 
+    /**
+     * Sends a formatted value state message to the player.
+     *
+     * @param player the player to send the message to
+     * @param label  the label describing what was changed
+     * @param value  the new value being displayed
+     */
+    @SuppressWarnings("SameParameterValue")
     private void sendValueMessage(PlayerEntity player, String label, String value) {
         var message = Text.empty()
                 .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))

@@ -13,7 +13,7 @@ import java.nio.file.Path;
 
 /**
  * Manages client-side configuration for the Paintbrush mod.
- * Persists user preferences to config/paintbrush.json.
+ * Persists user preferences to config/paintbrush/paintbrush.json.
  * All fields are public static for easy access throughout the client code.
  */
 @Environment(EnvType.CLIENT)
@@ -22,7 +22,9 @@ public class PaintbrushConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     /** Path to the configuration file in the config directory. */
-    private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("paintbrush.json");
+    private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir()
+            .resolve("paintbrush")
+            .resolve("paintbrush.json");
 
     /** Whether the paint knife can delete blocks when decrementing layer to 0. */
     public static boolean PAINTKNIFE_ALLOW_DELETE = false;
@@ -38,6 +40,9 @@ public class PaintbrushConfig {
 
     /** Whether foliage-like blocks should be filtered (invisible to targeting and painting). */
     public static boolean FILTER_FOLIAGE = false;
+
+    /** Whether block activation should be suppressed while holding the paintbrush or paint knife. */
+    public static boolean DISABLE_BLOCK_TOGGLES = false;
 
     /**
      * Loads configuration from disk.
@@ -56,14 +61,40 @@ public class PaintbrushConfig {
             PAINTKNIFE_FULL_BLOCKS = parseFullBlockMode(data.paintknifeFullBlocks, data.paintknifeAllowFullBlocks);
             PAINTKNIFE_DEBUG = data.paintknifeDebug;
             FILTER_FOLIAGE = data.filterFoliage;
+            DISABLE_BLOCK_TOGGLES = data.disableBlockToggles;
         } catch (Exception e) {
             PAINTKNIFE_ALLOW_DELETE = false;
             PAINTKNIFE_ALLOW_APPEND = false;
             PAINTKNIFE_FULL_BLOCKS = FullBlockMode.PARTIAL;
             PAINTKNIFE_DEBUG = false;
             FILTER_FOLIAGE = false;
+            DISABLE_BLOCK_TOGGLES = false;
             Paintbrush.LOGGER.warn("Paintbrush - Could not load config from {}", CONFIG_PATH, e);
         }
+    }
+
+    /**
+     * Parses the full-block promotion mode from configuration data, with fallback to legacy format.
+     * Attempts to parse the new modeName field first. If that fails, falls back to the legacy boolean.
+     * If both are missing, defaults to PARTIAL.
+     *
+     * @param modeName    the new format mode name (enum value), or null/blank if not set
+     * @param legacyValue the legacy boolean value (true = ALL, false = NONE), or null if not set
+     * @return the parsed FullBlockMode
+     */
+    private static FullBlockMode parseFullBlockMode(String modeName, Boolean legacyValue) {
+        if (modeName != null && !modeName.isBlank()) {
+            try {
+                return FullBlockMode.valueOf(modeName.trim().toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+
+        if (legacyValue != null) {
+            return legacyValue ? FullBlockMode.ALL : FullBlockMode.NONE;
+        }
+
+        return FullBlockMode.PARTIAL;
     }
 
     /**
@@ -78,6 +109,7 @@ public class PaintbrushConfig {
         data.paintknifeFullBlocks = PAINTKNIFE_FULL_BLOCKS.name();
         data.paintknifeDebug = PAINTKNIFE_DEBUG;
         data.filterFoliage = FILTER_FOLIAGE;
+        data.disableBlockToggles = DISABLE_BLOCK_TOGGLES;
 
         try {
             Files.createDirectories(CONFIG_PATH.getParent());
@@ -102,6 +134,7 @@ public class PaintbrushConfig {
         String paintknifeFullBlocks = "PARTIAL";
 
         /** Legacy boolean for migrating older configs. */
+        @SuppressWarnings("unused")
         Boolean paintknifeAllowFullBlocks;
 
         /** Whether paint knife debug output is enabled. */
@@ -109,20 +142,8 @@ public class PaintbrushConfig {
 
         /** Whether foliage filtering is enabled. */
         boolean filterFoliage = false;
-    }
 
-    private static FullBlockMode parseFullBlockMode(String modeName, Boolean legacyValue) {
-        if (modeName != null && !modeName.isBlank()) {
-            try {
-                return FullBlockMode.valueOf(modeName.trim().toUpperCase());
-            } catch (IllegalArgumentException ignored) {
-            }
-        }
-
-        if (legacyValue != null) {
-            return legacyValue ? FullBlockMode.ALL : FullBlockMode.NONE;
-        }
-
-        return FullBlockMode.PARTIAL;
+        /** Whether block activation is disabled for paintbrush and paint knife use. */
+        boolean disableBlockToggles = false;
     }
 }

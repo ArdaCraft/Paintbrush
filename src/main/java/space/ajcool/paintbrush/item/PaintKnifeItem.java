@@ -23,9 +23,9 @@ import net.minecraft.state.property.IntProperty;
 import net.minecraft.state.property.Property;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
-import net.minecraft.util.function.BooleanBiFunction;
 import net.minecraft.util.Hand;
 import net.minecraft.util.TypedActionResult;
+import net.minecraft.util.function.BooleanBiFunction;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.shape.VoxelShapes;
@@ -345,6 +345,18 @@ public class PaintKnifeItem extends Item {
                 || isPlainSlabId(blockId);
     }
 
+    /**
+     * Determines whether a max-layer block should be promoted to its family's full block.
+     * Respects the PAINTKNIFE_FULL_BLOCKS configuration:
+     * - ALL: always promote
+     * - NONE: never promote
+     * - PARTIAL: promote only if the block doesn't visually fill a full cube
+     *
+     * @param world the world containing the block
+     * @param state the current block state
+     * @param pos   the block position
+     * @return true if the block should be promoted to its family root
+     */
     private static boolean shouldPromoteToFullBlock(World world, BlockState state, BlockPos pos) {
         return switch (PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS) {
             case ALL -> true;
@@ -353,8 +365,15 @@ public class PaintKnifeItem extends Item {
         };
     }
 
-    // A shape that leaves no part of the full cube uncovered already looks like a full block,
-    // so promoting it to the family root would be a no-op swap.
+    /**
+     * Checks if a block state visually fills an entire cube in the world.
+     * Used to determine if promoting a max-layer block to full would be a no-op.
+     *
+     * @param world the world containing the block
+     * @param state the block state to check
+     * @param pos   the block position
+     * @return true if the block's outline shape is not a full cube
+     */
     private static boolean isVisuallyFullCube(World world, BlockState state, BlockPos pos) {
         var shape = state.getOutlineShape(world, pos);
         if (shape.isEmpty()) return false;
@@ -375,6 +394,43 @@ public class PaintKnifeItem extends Item {
                 && !blockId.endsWith("_quarter_slab")
                 && !blockId.endsWith("_eighth_slab")
                 && !blockId.endsWith("_vertical_corner_slab");
+    }
+
+    /**
+     * Reports a paint knife operation result to the player and logs it if debug output is enabled.
+     * Only sends messages and logs if PAINTKNIFE_DEBUG is true.
+     *
+     * @param player  the player to send the debug message to
+     * @param outcome a string describing the outcome (e.g., "SENT", "UNCHANGED")
+     * @param result  the layer change result, or null if no change was attempted
+     */
+    public static void reportDebugResult(PlayerEntity player, String outcome, LayerChangeResult result) {
+        if (!PaintbrushConfig.PAINTKNIFE_DEBUG) {
+            return;
+        }
+
+        var message = net.minecraft.text.Text.empty()
+                .append(net.minecraft.text.Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                .append(net.minecraft.text.Text.literal("Paint knife ").formatted(Formatting.DARK_GRAY))
+                .append(net.minecraft.text.Text.literal(outcome).formatted(Formatting.AQUA));
+
+        if (result != null && result.pos() != null) {
+            message.append(net.minecraft.text.Text.literal(" @ " + result.pos().toShortString()).formatted(Formatting.GRAY));
+        }
+
+        if (result != null && result.state() != null) {
+            message.append(net.minecraft.text.Text.literal(" -> " + result.state()).formatted(Formatting.GRAY));
+        }
+
+        player.sendMessage(message);
+
+        if (result == null) {
+            Paintbrush.LOGGER.info("Paintbrush - Paint knife result={} player={}", outcome, player.getName().getString());
+            return;
+        }
+
+        Paintbrush.LOGGER.info("Paintbrush - Paint knife result={} player={} pos={} state={}",
+                outcome, player.getName().getString(), result.pos(), result.state());
     }
 
     /**
@@ -430,6 +486,20 @@ public class PaintKnifeItem extends Item {
     }
 
     /**
+     * Enumeration of possible outcomes when attempting to change a block's layer property.
+     */
+    public enum LayerChangeOutcome {
+        /** The layer change was successfully sent to the server. */
+        SENT,
+        /** No target block was found or the block has no layer property. */
+        NO_TARGET,
+        /** The target block state is already set to the desired value. */
+        UNCHANGED,
+        /** The target position is outside the world's build limits or is protected. */
+        OUT_OF_BOUNDS
+    }
+
+    /**
      * Represents a proposed change to a block's layer state.
      *
      * @param pos   the position of the block to change
@@ -438,18 +508,19 @@ public class PaintKnifeItem extends Item {
     private record LayerChange(BlockPos pos, BlockState state) {
     }
 
-    public enum LayerChangeOutcome {
-        SENT,
-        NO_TARGET,
-        UNCHANGED,
-        OUT_OF_BOUNDS
-    }
-
+    /**
+     * Represents the result of a paint knife layer change operation.
+     *
+     * @param outcome the result outcome
+     * @param pos     the block position affected (or target position for failed attempts)
+     * @param state   the block state that was/would be applied
+     */
     public record LayerChangeResult(LayerChangeOutcome outcome, BlockPos pos, BlockState state) {
         private static LayerChangeResult sent(BlockPos pos, BlockState state) {
             return new LayerChangeResult(LayerChangeOutcome.SENT, pos, state);
         }
 
+        @SuppressWarnings("SameParameterValue")
         private static LayerChangeResult noTarget(BlockPos pos, BlockState state) {
             return new LayerChangeResult(LayerChangeOutcome.NO_TARGET, pos, state);
         }
@@ -461,34 +532,5 @@ public class PaintKnifeItem extends Item {
         private static LayerChangeResult outOfBounds(BlockPos pos, BlockState state) {
             return new LayerChangeResult(LayerChangeOutcome.OUT_OF_BOUNDS, pos, state);
         }
-    }
-
-    public static void reportDebugResult(PlayerEntity player, String outcome, LayerChangeResult result) {
-        if (!PaintbrushConfig.PAINTKNIFE_DEBUG) {
-            return;
-        }
-
-        var message = net.minecraft.text.Text.empty()
-                .append(net.minecraft.text.Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                .append(net.minecraft.text.Text.literal("Paint knife ").formatted(Formatting.DARK_GRAY))
-                .append(net.minecraft.text.Text.literal(outcome).formatted(Formatting.AQUA));
-
-        if (result != null && result.pos() != null) {
-            message.append(net.minecraft.text.Text.literal(" @ " + result.pos().toShortString()).formatted(Formatting.GRAY));
-        }
-
-        if (result != null && result.state() != null) {
-            message.append(net.minecraft.text.Text.literal(" -> " + result.state()).formatted(Formatting.GRAY));
-        }
-
-        player.sendMessage(message);
-
-        if (result == null) {
-            Paintbrush.LOGGER.info("Paintbrush - Paint knife result={} player={}", outcome, player.getName().getString());
-            return;
-        }
-
-        Paintbrush.LOGGER.info("Paintbrush - Paint knife result={} player={} pos={} state={}",
-                outcome, player.getName().getString(), result.pos(), result.state());
     }
 }

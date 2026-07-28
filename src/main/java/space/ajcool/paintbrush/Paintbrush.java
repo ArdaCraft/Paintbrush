@@ -17,6 +17,7 @@ import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityTypeBuilder;
 import net.minecraft.block.Block;
@@ -87,6 +88,9 @@ public class Paintbrush implements ModInitializer {
     /** Packet identifier for the client request to give a paint knife. */
     public static final Identifier GIVE_PAINT_KNIFE_PACKET_ID = new Identifier(ModID, "give_paint_knife");
 
+    /** Packet identifier for synchronizing block toggle suppression from the client to the server. */
+    public static final Identifier SET_BLOCK_TOGGLES_PACKET_ID = new Identifier(ModID, "set_block_toggles");
+
     /** Registry key for the custom Paintbrush item group. */
     public static final RegistryKey<ItemGroup> PAINTBRUSH_ITEM_GROUP_KEY = RegistryKey.of(Registries.ITEM_GROUP.getKey(), new Identifier(ModID, "item_group"));
 
@@ -101,6 +105,19 @@ public class Paintbrush implements ModInitializer {
 
     /** Maps player UUIDs to their hand rendering toggle state (true = show in hand, false = hotbar only). */
     private static final Map<UUID, Boolean> handToggle = new HashMap<>();
+
+    /** Maps player UUIDs to their block toggle suppression state. */
+    private static final Map<UUID, Boolean> blockTogglesDisabled = new HashMap<>();
+
+    /**
+     * Checks if block toggle suppression is enabled for the specified player.
+     *
+     * @param playerUUID the UUID of the player to check
+     * @return true if block activation is suppressed, false otherwise
+     */
+    public static boolean isBlockTogglesDisabled(UUID playerUUID) {
+        return blockTogglesDisabled.getOrDefault(playerUUID, false);
+    }
 
     /**
      * Initializes the mod by registering items, entities, item groups, network handlers, and commands.
@@ -242,8 +259,32 @@ public class Paintbrush implements ModInitializer {
                     player.getInventory().setStack(slot, itemstack));
         });
 
+        ServerPlayNetworking.registerGlobalReceiver(SET_BLOCK_TOGGLES_PACKET_ID, (server, player, handler, buf, responseSender) ->
+        {
+            var disableBlockToggles = buf.readBoolean();
+
+            server.execute(() -> setBlockTogglesDisabled(player.getUuid(), disableBlockToggles));
+        });
+
         ServerPlayNetworking.registerGlobalReceiver(GIVE_PAINT_KNIFE_PACKET_ID, (server, player, handler, buf, responseSender) ->
-                server.execute(() -> player.getInventory().insertStack(PAINT_KNIFE_ITEM.getDefaultStack())));
+                server.execute(() ->
+                {
+                    var createdNewItem = giveOrFocusItem(player, PAINT_KNIFE_ITEM);
+                    var message = Text.empty()
+                            .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                            .append(Text.literal(createdNewItem
+                                    ? "Added a paint knife to inventory!"
+                                    : "Moved your paint knife to your hand.").formatted(Formatting.DARK_GRAY));
+
+                    player.sendMessage(message);
+                }));
+
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+        {
+            var playerUuid = handler.player.getUuid();
+            handToggle.remove(playerUuid);
+            blockTogglesDisabled.remove(playerUuid);
+        });
 
         // Registering commands
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
@@ -251,6 +292,51 @@ public class Paintbrush implements ModInitializer {
             configureCommand("paintbrush", dispatcher);
             configureCommand("pb", dispatcher);
         });
+    }
+
+    /**
+     * Sets the block toggle suppression state for the specified player.
+     * When disabled, holding the paintbrush or paint knife will not activate blocks.
+     *
+     * @param playerUUID the UUID of the player
+     * @param disabled   true to suppress block activation, false to allow it
+     */
+    public static void setBlockTogglesDisabled(UUID playerUUID, boolean disabled) {
+        blockTogglesDisabled.put(playerUUID, disabled);
+    }
+
+    /**
+     * Puts an existing brush or knife in the player's hand, or gives a new one if none exists.
+     * Searches the player's main inventory for an existing item. If found and not in hand, swaps it
+     * to the selected slot. If not found, adds a new one to the selected slot or to the next available space.
+     *
+     * @param player the server player
+     * @param item   the item type to find or create
+     * @return true if a new item was created, false if an existing one was moved
+     */
+    public static boolean giveOrFocusItem(net.minecraft.server.network.ServerPlayerEntity player, Item item) {
+        var inventory = player.getInventory();
+        var selectedSlot = inventory.selectedSlot;
+        var selectedStack = inventory.getStack(selectedSlot);
+
+        for (int slot = 0; slot < inventory.main.size(); slot++) {
+            var stack = inventory.main.get(slot);
+            if (!stack.isOf(item)) continue;
+
+            if (slot == selectedSlot) return false;
+
+            inventory.setStack(selectedSlot, stack);
+            inventory.setStack(slot, selectedStack);
+            return false;
+        }
+
+        if (selectedStack.isEmpty()) {
+            inventory.setStack(selectedSlot, item.getDefaultStack());
+        } else {
+            inventory.insertStack(item.getDefaultStack());
+        }
+
+        return true;
     }
 
     /**
@@ -294,11 +380,13 @@ public class Paintbrush implements ModInitializer {
         var player = context.getSource().getPlayer();
 
         if (player != null) {
-            player.getInventory().insertStack(PAINTBRUSH_ITEM.getDefaultStack());
+            var createdNewItem = giveOrFocusItem(player, PAINTBRUSH_ITEM);
 
             var message = Text.empty()
                     .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                    .append(Text.literal("Added a dry paintbrush to inventory!").formatted(Formatting.DARK_GRAY));
+                    .append(Text.literal(createdNewItem
+                            ? "Added a dry paintbrush to inventory!"
+                            : "Moved your paintbrush to your hand.").formatted(Formatting.DARK_GRAY));
 
             player.sendMessage(message);
         }
