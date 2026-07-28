@@ -189,20 +189,36 @@ public class Paintbrush implements ModInitializer {
                     var blockEntity = world.getBlockEntity(queuedBlock.pos());
                     var canBreak = PlayerBlockBreakEvents.BEFORE.invoker().beforeBlockBreak(world, player, queuedBlock.pos(), blockState, blockEntity);
                     if (!canBreak) {
+                        LOGGER.warn("Blocked paintbrush:set_block for player={} pos={} state={}",
+                                player.getName().getString(), queuedBlock.pos(), blockState);
                         var errorMessage = Text.empty()
                                 .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                                .append(Text.literal("Unable to alter targeted blocks.").formatted(Formatting.DARK_GRAY));
+                                .append(Text.literal("Blocked by protection at " + queuedBlock.pos().toShortString() + ".").formatted(Formatting.DARK_GRAY));
 
                         player.sendMessage(errorMessage);
                         return;
                     }
                 }
 
-                LocalSession session = WorldEdit.getInstance().getSessionManager().findByName(player.getName().getString());
+                LocalSession session = WorldEdit.getInstance().getSessionManager().get(FabricAdapter.adaptPlayer(player));
 
-                if (session == null) return;
+                if (session == null) {
+                    var firstEntry = brushedBlocks.entrySet().iterator().next();
+                    LOGGER.warn("Dropped paintbrush:set_block for player={} reason=no_worldedit_session pos={} state={}",
+                            player.getName().getString(), firstEntry.getKey(), firstEntry.getValue());
+                    var errorMessage = Text.empty()
+                            .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                            .append(Text.literal("No WorldEdit session - edit dropped.").formatted(Formatting.DARK_GRAY));
+
+                    player.sendMessage(errorMessage);
+                    return;
+                }
 
                 try (EditSession editSession = session.createEditSession(FabricAdapter.adaptPlayer(player))) {
+                    var firstEntry = brushedBlocks.entrySet().iterator().next();
+                    LOGGER.debug("Applying paintbrush:set_block batch player={} count={} firstPos={}",
+                            player.getName().getString(), brushedBlocks.size(), firstEntry.getKey());
+
                     for (Map.Entry<BlockPos, BlockState> kvpEntry : brushedBlocks.entrySet()) {
                         editSession.setBlock(FabricAdapter.adapt(kvpEntry.getKey()), FabricAdapter.adapt(kvpEntry.getValue()));
                     }

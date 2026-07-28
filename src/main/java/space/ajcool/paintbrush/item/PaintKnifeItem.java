@@ -22,6 +22,7 @@ import net.minecraft.state.property.DirectionProperty;
 import net.minecraft.state.property.IntProperty;
 import net.minecraft.state.property.Property;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
 import net.minecraft.util.TypedActionResult;
 import net.minecraft.util.math.BlockPos;
@@ -58,27 +59,40 @@ public class PaintKnifeItem extends Item {
      * @param direction the direction clicked, used for appending/deleting and Ctrl-offset
      * @param delta     the change amount: 1 to increment, -1 to decrement, 0 for special operations
      */
-    public static void changeBlockLayer(PlayerEntity player, BlockPos pos, Direction direction, int delta) {
-        if (Screen.hasControlDown()) pos = pos.offset(direction);
+    public static LayerChangeResult changeBlockLayer(PlayerEntity player, BlockPos pos, Direction direction, int delta) {
+        if (Screen.hasControlDown()) {
+            pos = pos.offset(direction);
+        }
 
         var world = player.getWorld();
         var blockState = world.getBlockState(pos);
         var change = resolveLayerChange(world, blockState, pos, direction, delta);
 
-        if (change == null || change.state().equals(world.getBlockState(change.pos()))) return;
-        if (!world.canSetBlock(change.pos())) return;
+        if (change == null) {
+            return LayerChangeResult.noTarget(pos, null);
+        }
+
+        var resolvedState = change.state();
+        var resolvedPos = change.pos();
+
+        if (resolvedState.equals(world.getBlockState(resolvedPos))) {
+            return LayerChangeResult.unchanged(resolvedPos, resolvedState);
+        }
+
+        if (!world.canSetBlock(resolvedPos)) {
+            return LayerChangeResult.outOfBounds(resolvedPos, resolvedState);
+        }
 
         var packetBuffer = PacketByteBufs.create();
 
         packetBuffer.writeInt(1);
-        packetBuffer.writeBlockPos(change.pos());
-        packetBuffer.writeNbt(NbtHelper.fromBlockState(change.state()));
+        packetBuffer.writeBlockPos(resolvedPos);
+        packetBuffer.writeNbt(NbtHelper.fromBlockState(resolvedState));
 
         ClientPlayNetworking.send(Paintbrush.SET_BLOCK_PACKET_ID, packetBuffer);
 
         player.playSound(SoundEvents.ITEM_AXE_STRIP, SoundCategory.BLOCKS, .5F, 1.0F);
-
-        world.setBlockState(change.pos(), change.state(), 18);
+        return LayerChangeResult.sent(resolvedPos, resolvedState);
     }
 
     /**
@@ -369,20 +383,32 @@ public class PaintKnifeItem extends Item {
     @Override
     public ActionResult useOnBlock(ItemUsageContext itemUsageContext) {
         var world = itemUsageContext.getWorld();
-        if (!world.isClient()) return ActionResult.CONSUME;
+        if (!world.isClient()) {
+            return ActionResult.CONSUME;
+        }
 
         var player = itemUsageContext.getPlayer();
-        if (player == null) return ActionResult.FAIL;
+        if (player == null) {
+            return ActionResult.PASS;
+        }
 
-        if (player.getItemCooldownManager().isCoolingDown(PAINT_KNIFE_ITEM)) return ActionResult.FAIL;
-        player.getItemCooldownManager().set(PAINT_KNIFE_ITEM, 4);
+        if (player.getItemCooldownManager().isCoolingDown(PAINT_KNIFE_ITEM)) {
+            reportDebugResult(player, "cooling down", null);
+            return ActionResult.FAIL;
+        }
 
-        var blockPos = itemUsageContext.getBlockPos();
-        if (!world.canSetBlock(blockPos)) return ActionResult.FAIL;
+        if (!world.canSetBlock(itemUsageContext.getBlockPos())) {
+            reportDebugResult(player, "OUT_OF_BOUNDS", LayerChangeResult.outOfBounds(itemUsageContext.getBlockPos(), null));
+            return ActionResult.FAIL;
+        }
 
-        changeBlockLayer(player, blockPos, itemUsageContext.getSide(), 1);
+        var result = changeBlockLayer(player, itemUsageContext.getBlockPos(), itemUsageContext.getSide(), 1);
+        if (result.outcome() == LayerChangeOutcome.SENT) {
+            player.getItemCooldownManager().set(PAINT_KNIFE_ITEM, 4);
+        }
 
-        return ActionResult.CONSUME;
+        reportDebugResult(player, result.outcome().name(), result);
+        return ActionResult.FAIL;
     }
 
     /**
@@ -392,5 +418,59 @@ public class PaintKnifeItem extends Item {
      * @param state the new block state to apply
      */
     private record LayerChange(BlockPos pos, BlockState state) {
+    }
+
+    public enum LayerChangeOutcome {
+        SENT,
+        NO_TARGET,
+        UNCHANGED,
+        OUT_OF_BOUNDS
+    }
+
+    public record LayerChangeResult(LayerChangeOutcome outcome, BlockPos pos, BlockState state) {
+        private static LayerChangeResult sent(BlockPos pos, BlockState state) {
+            return new LayerChangeResult(LayerChangeOutcome.SENT, pos, state);
+        }
+
+        private static LayerChangeResult noTarget(BlockPos pos, BlockState state) {
+            return new LayerChangeResult(LayerChangeOutcome.NO_TARGET, pos, state);
+        }
+
+        private static LayerChangeResult unchanged(BlockPos pos, BlockState state) {
+            return new LayerChangeResult(LayerChangeOutcome.UNCHANGED, pos, state);
+        }
+
+        private static LayerChangeResult outOfBounds(BlockPos pos, BlockState state) {
+            return new LayerChangeResult(LayerChangeOutcome.OUT_OF_BOUNDS, pos, state);
+        }
+    }
+
+    public static void reportDebugResult(PlayerEntity player, String outcome, LayerChangeResult result) {
+        if (!PaintbrushConfig.PAINTKNIFE_DEBUG) {
+            return;
+        }
+
+        var message = net.minecraft.text.Text.empty()
+                .append(net.minecraft.text.Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                .append(net.minecraft.text.Text.literal("Paint knife ").formatted(Formatting.DARK_GRAY))
+                .append(net.minecraft.text.Text.literal(outcome).formatted(Formatting.AQUA));
+
+        if (result != null && result.pos() != null) {
+            message.append(net.minecraft.text.Text.literal(" @ " + result.pos().toShortString()).formatted(Formatting.GRAY));
+        }
+
+        if (result != null && result.state() != null) {
+            message.append(net.minecraft.text.Text.literal(" -> " + result.state()).formatted(Formatting.GRAY));
+        }
+
+        player.sendMessage(message);
+
+        if (result == null) {
+            Paintbrush.LOGGER.info("Paintbrush - Paint knife result={} player={}", outcome, player.getName().getString());
+            return;
+        }
+
+        Paintbrush.LOGGER.info("Paintbrush - Paint knife result={} player={} pos={} state={}",
+                outcome, player.getName().getString(), result.pos(), result.state());
     }
 }

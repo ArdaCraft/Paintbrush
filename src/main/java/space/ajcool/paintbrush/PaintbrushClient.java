@@ -40,9 +40,12 @@ import space.ajcool.paintbrush.render.PaintbrushHighlightRenderer;
 import space.ajcool.paintbrush.state.PaintbrushKeys;
 import space.ajcool.paintbrush.tokenizer.PaintbrushResourcesReloadListener;
 import space.ajcool.paintbrush.tokenizer.TokenRegistry;
+import space.ajcool.paintbrush.item.PaintKnifeItem.LayerChangeOutcome;
+import space.ajcool.paintbrush.item.PaintKnifeItem.LayerChangeResult;
 
 import static space.ajcool.paintbrush.Paintbrush.*;
 import static space.ajcool.paintbrush.item.PaintKnifeItem.changeBlockLayer;
+import static space.ajcool.paintbrush.item.PaintKnifeItem.reportDebugResult;
 
 /**
  * Client-side mod initialization for Paintbrush.
@@ -88,7 +91,9 @@ public class PaintbrushClient implements ClientModInitializer {
                     .then(ClientCommandManager.literal("append")
                             .executes(this::togglePaintKnifeAppend))
                     .then(ClientCommandManager.literal("fullblocks")
-                            .executes(this::togglePaintKnifeFullBlocks)));
+                            .executes(this::togglePaintKnifeFullBlocks))
+                    .then(ClientCommandManager.literal("debug")
+                            .executes(this::togglePaintKnifeDebug)));
             dispatcher.register(ClientCommandManager.literal("pk")
                     .executes(this::givePaintKnife)
                     .then(ClientCommandManager.literal("toggle")
@@ -98,7 +103,9 @@ public class PaintbrushClient implements ClientModInitializer {
                     .then(ClientCommandManager.literal("append")
                             .executes(this::togglePaintKnifeAppend))
                     .then(ClientCommandManager.literal("fullblocks")
-                            .executes(this::togglePaintKnifeFullBlocks)));
+                            .executes(this::togglePaintKnifeFullBlocks))
+                    .then(ClientCommandManager.literal("debug")
+                            .executes(this::togglePaintKnifeDebug)));
         });
 
         HudRenderCallback.EVENT.register((drawContext, tickDelta) ->
@@ -208,10 +215,17 @@ public class PaintbrushClient implements ClientModInitializer {
      */
     @SuppressWarnings("SameReturnValue")
     private ActionResult handlePaintKnifeInteraction(PlayerEntity player, ItemStack ignoredItemStack, BlockPos pos, Direction direction) {
-        if (player.getItemCooldownManager().isCoolingDown(PAINT_KNIFE_ITEM)) return ActionResult.FAIL;
-        player.getItemCooldownManager().set(PAINT_KNIFE_ITEM, 4);
+        if (player.getItemCooldownManager().isCoolingDown(PAINT_KNIFE_ITEM)) {
+            reportDebugResult(player, "cooling down", null);
+            return ActionResult.FAIL;
+        }
 
-        changeBlockLayer(player, pos, direction, -1);
+        var result = changeBlockLayer(player, pos, direction, -1);
+        if (result.outcome() == LayerChangeOutcome.SENT) {
+            player.getItemCooldownManager().set(PAINT_KNIFE_ITEM, 4);
+        }
+
+        reportDebugResult(player, describePaintKnifeOutcome(result), result);
 
         return ActionResult.FAIL;
     }
@@ -399,6 +413,7 @@ public class PaintbrushClient implements ClientModInitializer {
         sendToggleMessage(player, "Paintknife block deletion", PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE);
         sendToggleMessage(player, "Paintknife block append", PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
         sendToggleMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS);
+        sendToggleMessage(player, "Paintknife debug", PaintbrushConfig.PAINTKNIFE_DEBUG);
     }
 
     /**
@@ -498,6 +513,28 @@ public class PaintbrushClient implements ClientModInitializer {
         }
 
         return Command.SINGLE_SUCCESS;
+    }
+
+    @SuppressWarnings("SameReturnValue")
+    private int togglePaintKnifeDebug(CommandContext<FabricClientCommandSource> context) {
+        PaintbrushConfig.PAINTKNIFE_DEBUG = !PaintbrushConfig.PAINTKNIFE_DEBUG;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            sendToggleMessage(player, "Paintknife debug", PaintbrushConfig.PAINTKNIFE_DEBUG);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private String describePaintKnifeOutcome(LayerChangeResult result) {
+        return switch (result.outcome()) {
+            case SENT -> "SENT";
+            case NO_TARGET -> "NO_TARGET";
+            case UNCHANGED -> "UNCHANGED";
+            case OUT_OF_BOUNDS -> "OUT_OF_BOUNDS";
+        };
     }
 
     /**
