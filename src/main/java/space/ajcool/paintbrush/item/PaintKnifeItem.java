@@ -124,7 +124,7 @@ public class PaintKnifeItem extends Item {
                     return new LayerChange(pos, family.getRoot().getDefaultState());
                 }
 
-                return appendLayerBlock(world, family, pos, direction);
+                return appendLayerBlock(world, state, family, pos, direction);
             }
 
             if (delta < 0
@@ -144,7 +144,7 @@ public class PaintKnifeItem extends Item {
         if (family.getMembers().isEmpty() || !state.getBlock().equals(family.getRoot())) return null;
 
         if (delta > 0) {
-            return appendLayerBlock(world, family, pos, direction);
+            return appendLayerBlock(world, state, family, pos, direction);
         }
 
         if (delta == 0) return null;
@@ -271,18 +271,21 @@ public class PaintKnifeItem extends Item {
     }
 
     /**
-     * Appends a new layer block adjacent to the clicked face when the family supports it.
+     * Appends a new layer block adjacent to the clicked face when the family supports it and
+     * the source block visually fills the clicked face.
      * For Conquest vertical slabs, {@code facing=direction} keeps the new slab flush with the clicked face and
      * growing outward from the source block.
      *
-     * @param world     the world containing the blocks
-     * @param family    the block family to select from
-     * @param pos       the clicked block position
-     * @param direction the direction that was clicked
+     * @param world       the world containing the blocks
+     * @param sourceState the clicked block state
+     * @param family      the block family to select from
+     * @param pos         the clicked block position
+     * @param direction   the direction that was clicked
      * @return a layer change for the appended block, or null if appending is not allowed
      */
-    private static LayerChange appendLayerBlock(World world, Family<Block> family, BlockPos pos, Direction direction) {
+    private static LayerChange appendLayerBlock(World world, BlockState sourceState, Family<Block> family, BlockPos pos, Direction direction) {
         if (!PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND || family.getMembers().isEmpty()) return null;
+        if (!canAppendFrom(world, sourceState, pos, direction)) return null;
 
         var targetPos = pos.offset(direction);
         if (!world.getBlockState(targetPos).isReplaceable()) return null;
@@ -366,6 +369,34 @@ public class PaintKnifeItem extends Item {
     }
 
     /**
+     * Checks whether the clicked source block can visually support an appended layer block.
+     *
+     * @param world     the world containing the block
+     * @param state     the clicked block state
+     * @param pos       the clicked block position
+     * @param direction the clicked face
+     * @return true if the source fills the clicked face and is full or already at max layer
+     */
+    private static boolean canAppendFrom(World world, BlockState state, BlockPos pos, Direction direction) {
+        if (!isVisuallyFullCube(world, state, pos) && !isAtMaxLayer(state)) return false;
+
+        return Block.isFaceFullSquare(state.getOutlineShape(world, pos), direction);
+    }
+
+    /**
+     * Checks if a block state has a maxed layer-like property that can append.
+     *
+     * @param state the block state to check
+     * @return true if the block has a non-level layer property at its maximum value
+     */
+    private static boolean isAtMaxLayer(BlockState state) {
+        var layerProp = getLayerProperty(state);
+        if (layerProp == null || layerProp.getName().equals("level")) return false;
+
+        return state.get(layerProp) >= maxValue(layerProp);
+    }
+
+    /**
      * Checks if a block state visually fills an entire cube in the world.
      * Used to determine if promoting a max-layer block to full would be a no-op.
      *
@@ -374,6 +405,7 @@ public class PaintKnifeItem extends Item {
      * @param pos   the block position
      * @return true if the block's outline shape is not a full cube
      */
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private static boolean isVisuallyFullCube(World world, BlockState state, BlockPos pos) {
         var shape = state.getOutlineShape(world, pos);
         if (shape.isEmpty()) return false;
