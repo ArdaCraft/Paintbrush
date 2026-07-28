@@ -6,7 +6,7 @@
     "PlayerEntityMixin"
   ],
   "client": [
-    "client.PlayerInventoryMixin",
+    "client.MouseMixin",
     "client.ItemRendererMixin",
     "client.GameRendererMixin"
   ],

@@ -461,30 +461,8 @@ public class Paintbrush implements ModInitializer {
             var paintNbt = itemStack.getOrCreateSubNbt("paintbrush");
             paintNbt.put("size", NbtInt.of(size));
 
-            var iHaveAState = false;
-            BlockState blockState;
-
-            if (paintNbt.contains("state")) {
-                var state = paintNbt.getCompound("state");
-                RegistryWrapper<Block> registryEntryLookup = player.getWorld() != null ? player.getWorld().createCommandRegistryWrapper(RegistryKeys.BLOCK) : Registries.BLOCK.getReadOnlyWrapper();
-                blockState = NbtHelper.toBlockState(registryEntryLookup, state);
-                iHaveAState = true;
-            } else {
-                var material = paintNbt.getString("material");
-                var paintIdentifier = new Identifier(material);
-                var paintFamily = FamilyRegistry.BLOCKS.getFamily(paintIdentifier);
-                blockState = paintFamily.getRoot().getDefaultState();
-            }
-
-            var localName = Text.translatable(blockState.getBlock().getTranslationKey());
-            var name = Text.empty()
-                    .append(localName)
-                    .append(" Paintbrush")
-                    .formatted(iHaveAState ? Formatting.RED : Formatting.AQUA);
-
-            if (size > 1) name.append(Text.literal(" (" + size + ")").formatted(Formatting.GRAY));
-
-            itemStack.setCustomName(name);
+            RegistryWrapper<Block> registryEntryLookup = player.getWorld() != null ? player.getWorld().createCommandRegistryWrapper(RegistryKeys.BLOCK) : Registries.BLOCK.getReadOnlyWrapper();
+            itemStack.setCustomName(PaintbrushNaming.buildBrushName(itemStack, registryEntryLookup));
 
             context.getSource().getServer().execute(() -> player.getInventory().setStack(player.getInventory().selectedSlot, itemStack));
 

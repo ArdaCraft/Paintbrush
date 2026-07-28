@@ -194,19 +194,7 @@ public class PaintbrushClient implements ClientModInitializer {
 
         displayNbt.put("Lore", loreList);
 
-        // Set Item name
-        var localName = Text.translatable(blockState.getBlock().getTranslationKey());
-        var name = Text.empty()
-                .append(localName)
-                .append(" Paintbrush")
-                .formatted(iHaveAState ? Formatting.RED : Formatting.AQUA);
-
-        if (paintNbt.contains("size")) {
-            var size = paintNbt.getInt("size");
-            if (size > 1) name.append(Text.literal(" (" + size + ")").formatted(Formatting.GRAY));
-        }
-
-        itemStack.setCustomName(name);
+        itemStack.setCustomName(PaintbrushNaming.buildBrushName(itemStack, Registries.BLOCK.getReadOnlyWrapper()));
 
         player.getItemCooldownManager().set(PAINTBRUSH_ITEM, 5);
         player.playSound(SoundEvents.BLOCK_SLIME_BLOCK_BREAK, 0.2F, 1.0F);
