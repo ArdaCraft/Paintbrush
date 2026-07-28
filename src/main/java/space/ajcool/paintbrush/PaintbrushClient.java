@@ -69,11 +69,7 @@ public class PaintbrushClient implements ClientModInitializer {
             var player = client.player;
             if (player == null) return;
 
-            Paintbrush.setBlockTogglesDisabled(player.getUuid(), PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
-
-            var packetBuffer = PacketByteBufs.create();
-            packetBuffer.writeBoolean(PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
-            ClientPlayNetworking.send(SET_BLOCK_TOGGLES_PACKET_ID, packetBuffer);
+            syncBlockToggles(player);
         });
         PaintbrushKeys.register();
 
@@ -256,8 +252,22 @@ public class PaintbrushClient implements ClientModInitializer {
     }
 
     /**
+     * Mirrors the current block-toggle suppression setting into the local static map and syncs it to the server.
+     * This keeps common interaction code consistent on both sides after join and after runtime config changes.
+     *
+     * @param player the player whose preference should be synchronized
+     */
+    private void syncBlockToggles(PlayerEntity player) {
+        Paintbrush.setBlockTogglesDisabled(player.getUuid(), PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
+
+        var packetBuffer = PacketByteBufs.create();
+        packetBuffer.writeBoolean(PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
+        ClientPlayNetworking.send(SET_BLOCK_TOGGLES_PACKET_ID, packetBuffer);
+    }
+
+    /**
      * Registers client-side paintbrush commands with the given dispatcher.
-     * Handles filter and debug subcommands for foliage filtering and tokenizer debugging.
+     * Handles filter, block-toggle, and debug subcommands for runtime client preferences.
      *
      * @param commandName the command name to register (paintbrush or pb)
      * @param dispatcher  the command dispatcher to register with
@@ -268,6 +278,10 @@ public class PaintbrushClient implements ClientModInitializer {
                         .executes(this::showFilterState)
                         .then(ClientCommandManager.literal("toggle")
                                 .executes(this::toggleFilterFoliage)))
+                .then(ClientCommandManager.literal("blocktoggles")
+                        .executes(this::showBlockTogglesState)
+                        .then(ClientCommandManager.literal("toggle")
+                                .executes(this::toggleBlockToggles)))
                 .then(ClientCommandManager.literal("debug")
                         .executes(this::toggleTokenizerDebugOutput)
                         .then(ClientCommandManager.literal("showTokens")
@@ -308,6 +322,43 @@ public class PaintbrushClient implements ClientModInitializer {
         var player = context.getSource().getPlayer();
         if (player != null) {
             sendToggleMessage(player, "Foliage filtering", PaintbrushConfig.FILTER_FOLIAGE);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Shows the current block-toggle suppression state to the player.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int showBlockTogglesState(CommandContext<FabricClientCommandSource> context) {
+        var player = context.getSource().getPlayer();
+
+        if (player != null) {
+            sendToggleMessage(player, "Block toggle suppression", PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggles block-toggle suppression, persists the setting, and re-syncs it to the server.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int toggleBlockToggles(CommandContext<FabricClientCommandSource> context) {
+        PaintbrushConfig.DISABLE_BLOCK_TOGGLES = !PaintbrushConfig.DISABLE_BLOCK_TOGGLES;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            syncBlockToggles(player);
+            sendToggleMessage(player, "Block toggle suppression", PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
         }
 
         return Command.SINGLE_SUCCESS;

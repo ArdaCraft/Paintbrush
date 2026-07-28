@@ -42,7 +42,7 @@ public class PaintbrushConfig {
     public static boolean FILTER_FOLIAGE = false;
 
     /** Whether block activation should be suppressed while holding the paintbrush or paint knife. */
-    public static boolean DISABLE_BLOCK_TOGGLES = false;
+    public static boolean DISABLE_BLOCK_TOGGLES = true;
 
     /**
      * Loads configuration from disk.
@@ -68,7 +68,7 @@ public class PaintbrushConfig {
             PAINTKNIFE_FULL_BLOCKS = FullBlockMode.PARTIAL;
             PAINTKNIFE_DEBUG = false;
             FILTER_FOLIAGE = false;
-            DISABLE_BLOCK_TOGGLES = false;
+            DISABLE_BLOCK_TOGGLES = true;
             Paintbrush.LOGGER.warn("Paintbrush - Could not load config from {}", CONFIG_PATH, e);
         }
     }
@@ -144,6 +144,6 @@ public class PaintbrushConfig {
         boolean filterFoliage = false;
 
         /** Whether block activation is disabled for paintbrush and paint knife use. */
-        boolean disableBlockToggles = false;
+        boolean disableBlockToggles = true;
     }
 }

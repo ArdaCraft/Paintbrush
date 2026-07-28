@@ -342,7 +342,7 @@ public class Paintbrush implements ModInitializer {
     /**
      * Registers paintbrush commands with the given dispatcher.
      * Registers both "paintbrush" and "pb" as command aliases with the same structure.
-     * Stubs certain commands (filter, debug) that are implemented client-side.
+     * Stubs certain commands (filter, blocktoggles, debug) that are implemented client-side.
      *
      * @param commandName the name of the command to register
      * @param dispatcher  the command dispatcher to register with
@@ -356,6 +356,10 @@ public class Paintbrush implements ModInitializer {
                         .then(CommandManager.argument("value", IntegerArgumentType.integer())
                                 .executes(this::setBrushSize)))
                 .then(CommandManager.literal("filter")
+                        .executes(ctx -> 1)
+                        .then(CommandManager.literal("toggle")
+                                .executes(ctx -> 1)))
+                .then(CommandManager.literal("blocktoggles")
                         .executes(ctx -> 1)
                         .then(CommandManager.literal("toggle")
                                 .executes(ctx -> 1)))
