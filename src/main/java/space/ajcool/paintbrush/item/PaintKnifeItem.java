@@ -23,10 +23,12 @@ import net.minecraft.state.property.IntProperty;
 import net.minecraft.state.property.Property;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.function.BooleanBiFunction;
 import net.minecraft.util.Hand;
 import net.minecraft.util.TypedActionResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.World;
 import space.ajcool.paintbrush.Paintbrush;
 import space.ajcool.paintbrush.config.PaintbrushConfig;
@@ -116,13 +118,13 @@ public class PaintKnifeItem extends Item {
                     && value >= maxValue(layerProp)
                     && !layerProp.getName().equals("level")) {
                 var family = FamilyRegistry.BLOCKS.getFamily(state.getBlock());
-                if (!PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS) {
-                    return appendLayerBlock(world, family, pos, direction);
-                }
-
-                if (isSwappableLayerMember(state.getBlock()) && !family.getMembers().isEmpty()) {
+                if (shouldPromoteToFullBlock(world, state, pos)
+                        && isSwappableLayerMember(state.getBlock())
+                        && !family.getMembers().isEmpty()) {
                     return new LayerChange(pos, family.getRoot().getDefaultState());
                 }
+
+                return appendLayerBlock(world, family, pos, direction);
             }
 
             if (delta < 0
@@ -239,7 +241,7 @@ public class PaintKnifeItem extends Item {
 
     /**
      * Builds a vertical layer block state from a family.
-     * Selects vertical slab blocks with the appropriate facing direction.
+     * Conquest vertical slabs anchor on the edge opposite {@code direction} and grow toward it.
      *
      * @param family    the block family to select from
      * @param direction the direction to face (used for vertical slab facing property)
@@ -270,6 +272,8 @@ public class PaintKnifeItem extends Item {
 
     /**
      * Appends a new layer block adjacent to the clicked face when the family supports it.
+     * For Conquest vertical slabs, {@code facing=direction} keeps the new slab flush with the clicked face and
+     * growing outward from the source block.
      *
      * @param world     the world containing the blocks
      * @param family    the block family to select from
@@ -283,10 +287,7 @@ public class PaintKnifeItem extends Item {
         var targetPos = pos.offset(direction);
         if (!world.getBlockState(targetPos).isReplaceable()) return null;
 
-        var layerDirection = direction == Direction.UP || direction == Direction.DOWN
-                ? direction
-                : direction.getOpposite();
-        var newState = buildLayerState(family, layerDirection, 1);
+        var newState = buildLayerState(family, direction, 1);
         return newState == null ? null : new LayerChange(targetPos, newState);
     }
 
@@ -342,6 +343,23 @@ public class PaintKnifeItem extends Item {
         return blockId.endsWith("_layer")
                 || blockId.endsWith("_vertical_slab")
                 || isPlainSlabId(blockId);
+    }
+
+    private static boolean shouldPromoteToFullBlock(World world, BlockState state, BlockPos pos) {
+        return switch (PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS) {
+            case ALL -> true;
+            case NONE -> false;
+            case PARTIAL -> !isVisuallyFullCube(world, state, pos);
+        };
+    }
+
+    // A shape that leaves no part of the full cube uncovered already looks like a full block,
+    // so promoting it to the family root would be a no-op swap.
+    private static boolean isVisuallyFullCube(World world, BlockState state, BlockPos pos) {
+        var shape = state.getOutlineShape(world, pos);
+        if (shape.isEmpty()) return false;
+
+        return !VoxelShapes.matchesAnywhere(VoxelShapes.fullCube(), shape, BooleanBiFunction.ONLY_FIRST);
     }
 
     /**

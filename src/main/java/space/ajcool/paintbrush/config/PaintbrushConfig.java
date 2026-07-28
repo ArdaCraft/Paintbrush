@@ -30,8 +30,8 @@ public class PaintbrushConfig {
     /** Whether the paint knife can append new layer blocks when incrementing past max. */
     public static boolean PAINTKNIFE_ALLOW_APPEND = false;
 
-    /** Whether the paint knife promotes a max-layer block to its family's full block. */
-    public static boolean PAINTKNIFE_ALLOW_FULL_BLOCKS = true;
+    /** How the paint knife promotes max-layer blocks to their family's full block. */
+    public static FullBlockMode PAINTKNIFE_FULL_BLOCKS = FullBlockMode.PARTIAL;
 
     /** Whether paint knife debug messages should be shown client-side. */
     public static boolean PAINTKNIFE_DEBUG = false;
@@ -53,13 +53,13 @@ public class PaintbrushConfig {
 
             PAINTKNIFE_ALLOW_DELETE = data.paintknifeAllowDelete;
             PAINTKNIFE_ALLOW_APPEND = data.paintknifeAllowAppend;
-            PAINTKNIFE_ALLOW_FULL_BLOCKS = data.paintknifeAllowFullBlocks;
+            PAINTKNIFE_FULL_BLOCKS = parseFullBlockMode(data.paintknifeFullBlocks, data.paintknifeAllowFullBlocks);
             PAINTKNIFE_DEBUG = data.paintknifeDebug;
             FILTER_FOLIAGE = data.filterFoliage;
         } catch (Exception e) {
             PAINTKNIFE_ALLOW_DELETE = false;
             PAINTKNIFE_ALLOW_APPEND = false;
-            PAINTKNIFE_ALLOW_FULL_BLOCKS = true;
+            PAINTKNIFE_FULL_BLOCKS = FullBlockMode.PARTIAL;
             PAINTKNIFE_DEBUG = false;
             FILTER_FOLIAGE = false;
             Paintbrush.LOGGER.warn("Paintbrush - Could not load config from {}", CONFIG_PATH, e);
@@ -75,7 +75,7 @@ public class PaintbrushConfig {
         var data = new ConfigData();
         data.paintknifeAllowDelete = PAINTKNIFE_ALLOW_DELETE;
         data.paintknifeAllowAppend = PAINTKNIFE_ALLOW_APPEND;
-        data.paintknifeAllowFullBlocks = PAINTKNIFE_ALLOW_FULL_BLOCKS;
+        data.paintknifeFullBlocks = PAINTKNIFE_FULL_BLOCKS.name();
         data.paintknifeDebug = PAINTKNIFE_DEBUG;
         data.filterFoliage = FILTER_FOLIAGE;
 
@@ -98,13 +98,31 @@ public class PaintbrushConfig {
         /** Whether paint knife block appending is allowed. */
         boolean paintknifeAllowAppend = false;
 
-        /** Whether paint knife block promotion to full blocks is allowed. */
-        boolean paintknifeAllowFullBlocks = true;
+        /** Full-block promotion mode for maxed paint knife layer blocks. */
+        String paintknifeFullBlocks = "PARTIAL";
+
+        /** Legacy boolean for migrating older configs. */
+        Boolean paintknifeAllowFullBlocks;
 
         /** Whether paint knife debug output is enabled. */
         boolean paintknifeDebug = false;
 
         /** Whether foliage filtering is enabled. */
         boolean filterFoliage = false;
+    }
+
+    private static FullBlockMode parseFullBlockMode(String modeName, Boolean legacyValue) {
+        if (modeName != null && !modeName.isBlank()) {
+            try {
+                return FullBlockMode.valueOf(modeName.trim().toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+
+        if (legacyValue != null) {
+            return legacyValue ? FullBlockMode.ALL : FullBlockMode.NONE;
+        }
+
+        return FullBlockMode.PARTIAL;
     }
 }

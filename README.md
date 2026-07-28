@@ -1,4 +1,7 @@
 # Conquest Reforged Paintbrush
+![Minecraft 1.20.1](https://img.shields.io/badge/Minecraft-1.20.1-62b47a?style=flat-square)
+![Fabric](https://img.shields.io/badge/Fabric-loader-dbb66e?style=flat-square)
+[![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey?style=flat-square)](https://creativecommons.org/licenses/by/4.0/)
 
 Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to "copy" and "paste" the material of a block onto another block while maintaining its variant and properties. It also adds a paint knife which allows the user to change the layer properties of a targeted block.
 
@@ -30,7 +33,7 @@ Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to 
 - `paintknife toggle` or `pk toggle` toggles both paint knife settings together.
 - `paintknife delete` or `pk delete` toggles layer-1 block deletion.
 - `paintknife append` or `pk append` toggles appending layer-1 slabs from full blocks.
-- `paintknife fullblocks` or `pk fullblocks` toggles promoting a max-layer block into the full block of its family (enabled by default; when disabled, and append is enabled, a new layer-1 block is stacked in the clicked direction instead).
+- `paintknife fullblocks` or `pk fullblocks` cycles full-block promotion mode between `ALL`, `PARTIAL`, and `NONE` (default `PARTIAL`); `paintknife fullblocks <all|partial|none>` or `pk fullblocks <all|partial|none>` sets it directly.
 
 ### Paintbrush filtering
 

@@ -34,6 +34,7 @@ import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import space.ajcool.paintbrush.config.FullBlockMode;
 import space.ajcool.paintbrush.config.PaintbrushConfig;
 import space.ajcool.paintbrush.family.FamilyGroupRegistry;
 import space.ajcool.paintbrush.render.PaintbrushHighlightRenderer;
@@ -91,7 +92,13 @@ public class PaintbrushClient implements ClientModInitializer {
                     .then(ClientCommandManager.literal("append")
                             .executes(this::togglePaintKnifeAppend))
                     .then(ClientCommandManager.literal("fullblocks")
-                            .executes(this::togglePaintKnifeFullBlocks))
+                            .executes(this::cyclePaintKnifeFullBlocks)
+                            .then(ClientCommandManager.literal("all")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.ALL)))
+                            .then(ClientCommandManager.literal("partial")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.PARTIAL)))
+                            .then(ClientCommandManager.literal("none")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.NONE))))
                     .then(ClientCommandManager.literal("debug")
                             .executes(this::togglePaintKnifeDebug)));
             dispatcher.register(ClientCommandManager.literal("pk")
@@ -103,7 +110,13 @@ public class PaintbrushClient implements ClientModInitializer {
                     .then(ClientCommandManager.literal("append")
                             .executes(this::togglePaintKnifeAppend))
                     .then(ClientCommandManager.literal("fullblocks")
-                            .executes(this::togglePaintKnifeFullBlocks))
+                            .executes(this::cyclePaintKnifeFullBlocks)
+                            .then(ClientCommandManager.literal("all")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.ALL)))
+                            .then(ClientCommandManager.literal("partial")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.PARTIAL)))
+                            .then(ClientCommandManager.literal("none")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.NONE))))
                     .then(ClientCommandManager.literal("debug")
                             .executes(this::togglePaintKnifeDebug)));
         });
@@ -412,7 +425,7 @@ public class PaintbrushClient implements ClientModInitializer {
     private void showPaintKnifeSettings(PlayerEntity player) {
         sendToggleMessage(player, "Paintknife block deletion", PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE);
         sendToggleMessage(player, "Paintknife block append", PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
-        sendToggleMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS);
+        sendValueMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS.name());
         sendToggleMessage(player, "Paintknife debug", PaintbrushConfig.PAINTKNIFE_DEBUG);
     }
 
@@ -503,13 +516,26 @@ public class PaintbrushClient implements ClientModInitializer {
      * @return 1 if successful
      */
     @SuppressWarnings("SameReturnValue")
-    private int togglePaintKnifeFullBlocks(CommandContext<FabricClientCommandSource> context) {
-        PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS = !PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS;
+    private int cyclePaintKnifeFullBlocks(CommandContext<FabricClientCommandSource> context) {
+        PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS = PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS.next();
         PaintbrushConfig.save();
 
         var player = context.getSource().getPlayer();
         if (player != null) {
-            sendToggleMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_ALLOW_FULL_BLOCKS);
+            sendValueMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS.name());
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    @SuppressWarnings("SameReturnValue")
+    private int setFullBlocks(CommandContext<FabricClientCommandSource> context, FullBlockMode mode) {
+        PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS = mode;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            sendValueMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS.name());
         }
 
         return Command.SINGLE_SUCCESS;
@@ -549,6 +575,15 @@ public class PaintbrushClient implements ClientModInitializer {
                 .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
                 .append(Text.literal(label + " ").formatted(Formatting.DARK_GRAY))
                 .append(Text.literal(enabled ? "enabled" : "disabled").formatted(enabled ? Formatting.GREEN : Formatting.RED));
+
+        player.sendMessage(message);
+    }
+
+    private void sendValueMessage(PlayerEntity player, String label, String value) {
+        var message = Text.empty()
+                .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                .append(Text.literal(label + " ").formatted(Formatting.DARK_GRAY))
+                .append(Text.literal(value).formatted(Formatting.AQUA));
 
         player.sendMessage(message);
     }
