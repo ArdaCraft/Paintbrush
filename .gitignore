@@ -46,3 +46,6 @@ replay_*.log
 
 .devauth/microsoft_accounts.json
 microsoft_accounts.json
+
+!README.md
+*.md
