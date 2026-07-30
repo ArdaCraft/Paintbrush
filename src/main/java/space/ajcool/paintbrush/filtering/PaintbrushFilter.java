@@ -7,6 +7,7 @@ import net.fabricmc.api.Environment;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.registry.Registries;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.tag.TagKey;
 import net.minecraft.resource.Resource;
@@ -19,6 +20,8 @@ import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Manages foliage filtering for the paintbrush.
@@ -31,8 +34,11 @@ public final class PaintbrushFilter {
     /** Logger for filter operations. */
     private static final Logger LOGGER = LoggerFactory.getLogger("PaintbrushFilter");
 
-    /** List of lowercase block state strings to match against foliage. */
+    /** List of lowercase block state substrings to match against foliage. */
     private static List<String> FILTER_NAMES = List.of();
+
+    /** Set of block identifiers that are matched exactly. */
+    private static Set<Identifier> FILTER_IDS = Set.of();
 
     /** List of block tags that identify foliage blocks. */
     private static List<TagKey<Block>> FILTER_TAGS = List.of();
@@ -46,7 +52,8 @@ public final class PaintbrushFilter {
 
     /**
      * Loads the filter configuration from paintbrush-filter.json.
-     * Entries can be lowercase block state substrings or #namespace:id block tag references.
+     * Entries are #namespace:id block tag references, namespace:id block identifiers matched
+     * exactly, or bare keywords matched as lowercase block state substrings.
      */
     public static void load() {
         var id = new Identifier("paintbrush", "paintbrush-filter.json");
@@ -55,8 +62,7 @@ public final class PaintbrushFilter {
                 .getResource(id);
 
         if (resource.isEmpty()) {
-            FILTER_NAMES = List.of();
-            FILTER_TAGS = List.of();
+            clear();
             LOGGER.warn("Paintbrush - Could not find paintbrush-filter.json!");
             return;
         }
@@ -67,8 +73,7 @@ public final class PaintbrushFilter {
             List<String> data = new Gson().fromJson(new InputStreamReader(stream), type);
 
             if (data == null) {
-                FILTER_NAMES = List.of();
-                FILTER_TAGS = List.of();
+                clear();
                 LOGGER.warn("Paintbrush - paintbrush-filter.json contains no filter items");
                 return;
             }
@@ -83,16 +88,47 @@ public final class PaintbrushFilter {
                     .map(PaintbrushFilter::parseTag)
                     .flatMap(Optional::stream)
                     .toList();
+            FILTER_IDS = entries.stream()
+                    .filter(name -> !name.startsWith("#") && name.contains(":"))
+                    .map(PaintbrushFilter::parseIdentifier)
+                    .flatMap(Optional::stream)
+                    .collect(Collectors.toUnmodifiableSet());
             FILTER_NAMES = entries.stream()
-                    .filter(name -> !name.startsWith("#"))
+                    .filter(name -> !name.startsWith("#") && !name.contains(":"))
                     .toList();
-            LOGGER.info("Paintbrush - Initialized {} filter items and {} filter tags", FILTER_NAMES.size(), FILTER_TAGS.size());
+            LOGGER.info("Paintbrush - Initialized {} filter blocks, {} filter keywords and {} filter tags",
+                    FILTER_IDS.size(), FILTER_NAMES.size(), FILTER_TAGS.size());
         } catch (Exception e) {
-            FILTER_NAMES = List.of();
-            FILTER_TAGS = List.of();
+            clear();
             LOGGER.warn("Paintbrush - Could not load paintbrush-filter.json!");
             LOGGER.error("Error during paintbrush filter initialization", e);
         }
+    }
+
+    /**
+     * Drops every loaded filter entry.
+     */
+    private static void clear() {
+        FILTER_NAMES = List.of();
+        FILTER_IDS = Set.of();
+        FILTER_TAGS = List.of();
+    }
+
+    /**
+     * Parses a block identifier from a filter entry string.
+     *
+     * @param name the namespace:id entry string
+     * @return an optional containing the parsed identifier, or empty if parsing failed
+     */
+    private static Optional<Identifier> parseIdentifier(String name) {
+        var identifier = Identifier.tryParse(name);
+
+        if (identifier == null) {
+            LOGGER.warn("Paintbrush - Skipping malformed block filter entry '{}'", name);
+            return Optional.empty();
+        }
+
+        return Optional.of(identifier);
     }
 
     /**
@@ -115,7 +151,8 @@ public final class PaintbrushFilter {
 
     /**
      * Checks if a block state matches the foliage filter.
-     * Returns true if the block matches any filter tag or contains any filter name substring.
+     * Returns true if the block matches any filter tag, has a filtered block identifier, or
+     * contains any filter keyword substring.
      *
      * @param blockState the block state to check
      * @return true if the block is filtered (considered foliage)
@@ -125,6 +162,10 @@ public final class PaintbrushFilter {
             if (blockState.isIn(tag)) {
                 return true;
             }
+        }
+
+        if (!FILTER_IDS.isEmpty() && FILTER_IDS.contains(Registries.BLOCK.getId(blockState.getBlock()))) {
+            return true;
         }
 
         if (FILTER_NAMES.isEmpty()) {
