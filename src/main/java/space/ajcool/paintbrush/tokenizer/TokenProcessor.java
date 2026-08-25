@@ -1,8 +1,8 @@
 package space.ajcool.paintbrush.tokenizer;
 
-import net.minecraft.block.Block;
-import net.minecraft.text.Text;
-import net.minecraft.util.Pair;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.network.chat.Component;
+import com.mojang.datafixers.util.Pair;
 import space.ajcool.paintbrush.Paintbrush;
 
 import java.util.Arrays;
@@ -26,8 +26,8 @@ public class TokenProcessor {
      */
     public boolean tokenizedBlocksMatch(Pair<Block, List<String>> blockA, Pair<Block, List<String>> blockB) {
 
-        return new HashSet<>(blockA.getRight()).equals(
-                new HashSet<>(blockB.getRight()));
+        return new HashSet<>(blockA.getSecond()).equals(
+                new HashSet<>(blockB.getSecond()));
     }
 
     /**
@@ -39,7 +39,7 @@ public class TokenProcessor {
      */
     public Pair<Block, List<String>> tokenizeBlock(Block block) {
 
-        String blockFullName = Text.translatable(block.getTranslationKey()).getString().toLowerCase();
+        String blockFullName = Component.translatable(block.getDescriptionId()).getString().toLowerCase();
 
         for (String reservedName : TokenRegistry.RESERVED_TOKENS) {
 
@@ -66,12 +66,12 @@ public class TokenProcessor {
      */
     public void outputDebug(Pair<Block, List<String>> tokenizedTargetBlock, List<Pair<Block, List<String>>> tokenizedPaintFamilyBlocks) {
 
-        var blockName = Text.translatable(tokenizedTargetBlock.getLeft().getTranslationKey()).getString();
+        var blockName = Component.translatable(tokenizedTargetBlock.getFirst().getDescriptionId()).getString();
 
         StringBuilder builder = new StringBuilder("Looking for match of \"")
                 .append(blockName)
                 .append("\" [")
-                .append(tokenizedTargetBlock.getRight().toString())
+                .append(tokenizedTargetBlock.getSecond().toString())
                 .append("] in paint family : ");
         Paintbrush.LOGGER.info(builder.toString());
 
@@ -80,9 +80,9 @@ public class TokenProcessor {
         for (Pair<Block, List<String>> pair : tokenizedPaintFamilyBlocks) {
 
             builder.append("- \"")
-                    .append(Text.translatable(pair.getLeft().getTranslationKey()).getString())
+                    .append(Component.translatable(pair.getFirst().getDescriptionId()).getString())
                     .append("\" [")
-                    .append(pair.getRight().toString())
+                    .append(pair.getSecond().toString())
                     .append("]\n");
         }
         Paintbrush.LOGGER.info(builder.toString());

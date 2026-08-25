@@ -4,9 +4,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.resource.Resource;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,15 +34,15 @@ public final class TokenLoader {
      */
     public static void load() {
 
-        Identifier id = new Identifier("paintbrush", "tokens.json");
+        Identifier id = Identifier.fromNamespaceAndPath("paintbrush", "tokens.json");
 
-        Optional<Resource> resource = MinecraftClient.getInstance()
+        Optional<Resource> resource = Minecraft.getInstance()
                 .getResourceManager()
                 .getResource(id);
 
         if (resource.isPresent()) {
 
-            try (InputStream stream = resource.get().getInputStream()) {
+            try (InputStream stream = resource.get().open()) {
 
                 Gson gson = new GsonBuilder()
                         .registerTypeAdapter(TokenData.class, new TokenDeserializer())

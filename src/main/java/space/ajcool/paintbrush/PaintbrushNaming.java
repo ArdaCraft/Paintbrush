@@ -1,19 +1,19 @@
 package space.ajcool.paintbrush;
 
 import com.conquestrefabricated.core.item.family.FamilyRegistry;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtHelper;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.Identifier;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.HolderGetter;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
+import net.minecraft.resources.Identifier;
 
 /**
- * Builds display names for paintbrush item stacks from their stored paintbrush NBT.
+ * Builds display names for paintbrush item stacks from their stored paintbrush data component.
  * This class is common-code safe so both server commands and client interactions can use the same naming rules.
  */
 public final class PaintbrushNaming
@@ -29,44 +29,49 @@ public final class PaintbrushNaming
      * Builds the custom paintbrush name for the supplied item stack.
      * Strict-mode brushes are colored red, material-family brushes are colored aqua, and sizes above one are appended.
      *
-     * @param itemStack           the paintbrush stack whose {@code paintbrush} sub-NBT contains material, state, and size data
+     * @param itemStack           the paintbrush stack whose {@code paintbrush} custom-data compound contains material, state, and size data
      * @param registryEntryLookup the block registry wrapper used to decode a stored strict-mode block state
      * @return the custom name to apply to the paintbrush stack
      */
-    public static MutableText buildBrushName(ItemStack itemStack, RegistryWrapper<Block> registryEntryLookup)
+    public static MutableComponent buildBrushName(ItemStack itemStack, HolderGetter<Block> registryEntryLookup)
     {
-        var paintNbt = itemStack.getOrCreateSubNbt("paintbrush");
+        var paintNbt = PaintbrushData.read(itemStack);
         var iHaveAState = false;
         BlockState blockState;
 
         if (paintNbt.contains("state"))
         {
-            var state = paintNbt.getCompound("state");
-            blockState = NbtHelper.toBlockState(registryEntryLookup, state);
+            var state = paintNbt.getCompound("state").orElseGet(net.minecraft.nbt.CompoundTag::new);
+            blockState = NbtUtils.readBlockState(registryEntryLookup, state);
             iHaveAState = true;
         }
         else
         {
-            var material = paintNbt.getString("material");
-            var paintIdentifier = new Identifier(material);
+            var material = paintNbt.getStringOr("material", "minecraft:air");
+            var paintIdentifier = Identifier.parse(material);
             var paintFamily = FamilyRegistry.BLOCKS.getFamily(paintIdentifier);
             blockState = paintFamily.isAbsent()
-                    ? Registries.BLOCK.get(paintIdentifier).getDefaultState()
-                    : paintFamily.getRoot().getDefaultState();
+                    ? BuiltInRegistries.BLOCK.getValue(paintIdentifier).defaultBlockState()
+                    : paintFamily.getRoot().defaultBlockState();
         }
 
-        var localName = Text.translatable(blockState.getBlock().getTranslationKey());
-        var name = Text.empty()
-                .append(localName)
-                .append(" Paintbrush")
-                .formatted(iHaveAState ? Formatting.RED : Formatting.AQUA);
+        var localName = Component.translatable(blockState.getBlock().getDescriptionId());
+        var name = Component.translatable("paintbrush.item.name", localName)
+                .withStyle(iHaveAState ? ChatFormatting.RED : ChatFormatting.AQUA);
 
         if (paintNbt.contains("size"))
         {
-            var size = paintNbt.getInt("size");
-            if (size > 1) name.append(Text.literal(" (" + size + ")").formatted(Formatting.GRAY));
+            var size = paintNbt.getIntOr("size", 1);
+            if (size > 1) name.append(Component.translatable("paintbrush.item.size_suffix", size).withStyle(ChatFormatting.GRAY));
         }
 
         return name;
+    }
+
+    public static MutableComponent prefixedMessage(Component body)
+    {
+        return Component.empty()
+                .append(Component.translatable("paintbrush.prefix").withStyle(ChatFormatting.DARK_AQUA))
+                .append(body);
     }
 }

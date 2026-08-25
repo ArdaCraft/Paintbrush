@@ -1,8 +1,8 @@
 package space.ajcool.paintbrush.item;
 
-import net.minecraft.block.FluidBlock;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
 import space.ajcool.paintbrush.config.PaintbrushConfig;
 import space.ajcool.paintbrush.filtering.PaintbrushFilter;
 
@@ -30,7 +30,7 @@ public final class PaintbrushVolume {
      * @param size         the brush size (1-5)
      * @return a list of all positions within the sphere
      */
-    public static List<BlockPos> collect(World ignoredWorld, BlockPos center, int size) {
+    public static List<BlockPos> collect(Level ignoredWorld, BlockPos center, int size) {
         var positions = new ArrayList<BlockPos>();
 
         if (size <= 1) {
@@ -44,7 +44,7 @@ public final class PaintbrushVolume {
             for (int y = -radius; y <= radius; y++) {
                 for (int z = -radius; z <= radius; z++) {
                     if (x * x + y * y + z * z <= radius * radius) {
-                        positions.add(center.add(x, y, z));
+                        positions.add(center.offset(x, y, z));
                     }
                 }
             }
@@ -61,13 +61,13 @@ public final class PaintbrushVolume {
      * @param pos   the position to check
      * @return true if the block can be painted
      */
-    public static boolean isPaintable(World world, BlockPos pos) {
+    public static boolean isPaintable(Level world, BlockPos pos) {
         var targetBlockState = world.getBlockState(pos);
         // Only reject blocks that ARE a fluid (water/lava source or flowing), not solid
         // blocks that merely carry a fluid via WATERLOGGED (those return a non-empty FluidState).
-        var isFluid = targetBlockState.getBlock() instanceof FluidBlock;
+        var isFluid = targetBlockState.getBlock() instanceof LiquidBlock;
 
-        if (!world.canSetBlock(pos) || targetBlockState.isAir() || isFluid) return false;
+        if (!world.isInWorldBounds(pos) || targetBlockState.isAir() || isFluid) return false;
 
         return !PaintbrushConfig.FILTER_FOLIAGE || !PaintbrushFilter.contains(targetBlockState);
     }

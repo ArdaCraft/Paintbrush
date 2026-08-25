@@ -2,19 +2,15 @@ package space.ajcool.paintbrush.mixin.client;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.block.Block;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.item.BuiltinModelItemRenderer;
-import net.minecraft.client.render.item.ItemRenderer;
-import net.minecraft.client.render.model.BakedModel;
-import net.minecraft.client.render.model.json.ModelTransformationMode;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-import org.spongepowered.asm.mixin.Final;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.item.ItemModelResolver;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.ItemOwner;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -22,93 +18,77 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import space.ajcool.paintbrush.Paintbrush;
-
-import java.util.UUID;
+import space.ajcool.paintbrush.PaintbrushData;
 
 /**
- * Mixin for ItemRenderer to render the painted material block in the player's hand.
- * When holding a paintbrush with a copied material, displays the block instead of the paintbrush item.
- * Only active when the player is sneaking, or always in GUI rendering modes if hand toggle is on.
+ * Mixin for ItemModelResolver to render the painted material block in the player's hand and GUI.
+ * When holding a paintbrush with a copied material and shift is held, displays the material block
+ * instead of the paintbrush item. Injects at the render-state population seam so the swap happens
+ * before the state is built — cleaner than the old BakedModel-era approach.
  */
 @Environment(EnvType.CLIENT)
-@Mixin(ItemRenderer.class)
-public class ItemRendererMixin {
+@Mixin(ItemModelResolver.class)
+public abstract class ItemRendererMixin {
 
-    /** Thread-local flag to prevent recursive rendering when delegating to the original renderer. */
+    /** Thread-local flag to prevent recursive render-state updates. */
     @Unique
-    private static final ThreadLocal<Boolean> isRendering = ThreadLocal.withInitial(() -> false);
+    private static final ThreadLocal<Boolean> isUpdating = ThreadLocal.withInitial(() -> false);
 
-    /** The builtin model renderer for rendering items. */
-    @SuppressWarnings("unused")
     @Shadow
-    @Final
-    private BuiltinModelItemRenderer builtinModelItemRenderer;
+    public abstract void updateForTopItem(ItemStackRenderState output, ItemStack stack,
+            ItemDisplayContext displayContext, Level level, ItemOwner owner, int seed);
 
-    /**
-     * Injects into renderItem to replace paintbrush rendering with the material block.
-     * Renders the copied material block instead of the paintbrush item when appropriate.
-     *
-     * @param stack           the item stack being rendered
-     * @param renderMode      the render mode (hand, first-person, GUI, etc.)
-     * @param leftHanded      whether rendering for left-handed mode
-     * @param matrices        the matrix stack for transformations
-     * @param vertexConsumers the vertex consumer provider
-     * @param light           the light level
-     * @param overlay         the overlay parameter
-     * @param model           the baked item model
-     * @param ci              the callback info for this injection
-     */
-    @SuppressWarnings("DataFlowIssue")
-    @Inject(method = "renderItem(Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/render/model/json/ModelTransformationMode;ZLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;IILnet/minecraft/client/render/model/BakedModel;)V", at = @At("HEAD"), cancellable = true)
-    private void onRenderItem(ItemStack stack, ModelTransformationMode renderMode, boolean leftHanded, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, int overlay, BakedModel model, CallbackInfo ci) {
+    @Inject(method = "updateForTopItem", at = @At("HEAD"), cancellable = true)
+    private void paintbrush$renderMaterial(
+            ItemStackRenderState output,
+            ItemStack item,
+            ItemDisplayContext displayContext,
+            Level level,
+            ItemOwner owner,
+            int seed,
+            CallbackInfo ci) {
 
-        // Avoid recursive rendering
-        if (isRendering.get()) {
-            return;
+        if (isUpdating.get()) return;
+        if (!item.is(Paintbrush.PAINTBRUSH_ITEM)) return;
+
+        var client = Minecraft.getInstance();
+        if (client.player == null || !client.player.isShiftKeyDown()) return;
+
+        var paintNbt = PaintbrushData.read(item);
+        if (paintNbt.isEmpty()) return;
+
+        var uuid = client.player.getUUID();
+        var showInHand = Paintbrush.isHandToggleEnabled(uuid);
+
+        boolean isGui = displayContext == ItemDisplayContext.GUI;
+        if (!isGui && !showInHand) return;
+
+        ItemStack materialStack = resolveMaterialStack(paintNbt);
+        if (materialStack.isEmpty()) return;
+
+        isUpdating.set(true);
+        try {
+            updateForTopItem(output, materialStack, displayContext, level, owner, seed);
+        } finally {
+            isUpdating.set(false);
         }
+        ci.cancel();
+    }
 
-        if (stack.isOf(Paintbrush.PAINTBRUSH_ITEM)) {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player != null && client.player.isSneaking() && stack.hasNbt()) {
-                UUID playerUUID = client.player.getUuid();
-                boolean showInHand = Paintbrush.isHandToggleEnabled(playerUUID);
-                NbtCompound paintNbt = stack.getSubNbt("paintbrush");
-
-                if (paintNbt != null) {
-                    ItemStack newStack = ItemStack.EMPTY;
-
-                    if (paintNbt.contains("state")) {
-                        NbtCompound stateNbt = paintNbt.getCompound("state");
-                        String blockId = stateNbt.getString("Name");
-                        Block block = Registries.BLOCK.get(new Identifier(blockId));
-                        newStack = block.asItem().getDefaultStack();
-                    } else if (paintNbt.contains("material")) {
-                        String material = paintNbt.getString("material");
-                        Identifier paintIdentifier = new Identifier(material);
-                        Block block = Registries.BLOCK.get(paintIdentifier);
-                        newStack = block.asItem().getDefaultStack();
-                    }
-
-                    // Ensure newStack is not air to prevent rendering loop
-                    if (newStack.isEmpty()) {
-                        return;
-                    }
-
-                    // Always render the paintbrush in hand unless /pb hand is toggled
-                    if (renderMode == ModelTransformationMode.GUI || showInHand) {
-                        BakedModel newModel = client.getItemRenderer().getModel(newStack, client.world, null, 0);
-
-                        // Prevent subsequent calls from within this mixin
-                        isRendering.set(true);
-                        try {
-                            ((ItemRenderer) (Object) this).renderItem(newStack, renderMode, leftHanded, matrices, vertexConsumers, light, overlay, newModel);
-                        } finally {
-                            isRendering.set(false);
-                        }
-                        ci.cancel();
-                    }
-                }
-            }
+    @Unique
+    private static ItemStack resolveMaterialStack(net.minecraft.nbt.CompoundTag paintNbt) {
+        if (paintNbt.contains("state")) {
+            var stateNbt = paintNbt.getCompound("state").orElseGet(net.minecraft.nbt.CompoundTag::new);
+            var blockId = stateNbt.getStringOr("Name", "");
+            if (blockId.isEmpty()) return ItemStack.EMPTY;
+            var block = BuiltInRegistries.BLOCK.getValue(Identifier.parse(blockId));
+            return block.asItem().getDefaultInstance();
+        } else if (paintNbt.contains("material")) {
+            var material = paintNbt.getStringOr("material", "");
+            if (material.isEmpty()) return ItemStack.EMPTY;
+            var block = BuiltInRegistries.BLOCK.getValue(Identifier.parse(material));
+            return block.asItem().getDefaultInstance();
         }
+        return ItemStack.EMPTY;
     }
 }

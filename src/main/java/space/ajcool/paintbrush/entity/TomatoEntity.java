@@ -2,24 +2,25 @@ package space.ajcool.paintbrush.entity;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.projectile.thrown.ThrownItemEntity;
-import net.minecraft.item.Item;
-import net.minecraft.particle.ItemStackParticleEffect;
-import net.minecraft.particle.ParticleEffect;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.world.World;
+import net.minecraft.core.particles.ItemParticleOption;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrowableItemProjectile;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.HitResult;
+import org.jspecify.annotations.NonNull;
 import space.ajcool.paintbrush.Paintbrush;
 
 /**
  * The Tomato entity - a throwable projectile created when the tomato item is used.
  * Similar to snowballs, it creates particles on collision and plays a squish sound.
  */
-public class TomatoEntity extends ThrownItemEntity {
+public class TomatoEntity extends ThrowableItemProjectile {
 
     /**
      * Creates a TomatoEntity with the given entity type and world.
@@ -27,7 +28,7 @@ public class TomatoEntity extends ThrownItemEntity {
      * @param entityType the entity type
      * @param world      the world the entity exists in
      */
-    public TomatoEntity(EntityType<? extends ThrownItemEntity> entityType, World world) {
+    public TomatoEntity(EntityType<? extends ThrowableItemProjectile> entityType, Level world) {
         super(entityType, world);
     }
 
@@ -37,21 +38,8 @@ public class TomatoEntity extends ThrownItemEntity {
      * @param world the world the entity exists in
      * @param owner the entity that threw the tomato
      */
-    public TomatoEntity(World world, LivingEntity owner) {
-        super(Paintbrush.TOMATO, owner, world);
-    }
-
-    /**
-     * Creates a TomatoEntity at the specified coordinates.
-     *
-     * @param world the world the entity exists in
-     * @param x     the x coordinate
-     * @param y     the y coordinate
-     * @param z     the z coordinate
-     */
-    @SuppressWarnings("unused")
-    public TomatoEntity(World world, double x, double y, double z) {
-        super(Paintbrush.TOMATO, x, y, z, world);
+    public TomatoEntity(Level world, LivingEntity owner) {
+        super(Paintbrush.TOMATO, owner, world, Paintbrush.TOMATO_ITEM.getDefaultInstance());
     }
 
     /**
@@ -60,15 +48,16 @@ public class TomatoEntity extends ThrownItemEntity {
      *
      * @param status the status code
      */
+    @Override
     @Environment(EnvType.CLIENT)
-    public void handleStatus(byte status) {
+    public void handleEntityEvent(byte status) {
         if (status != 3) return;
-        ParticleEffect particleEffect = this.getParticleParameters();
+        ParticleOptions particleEffect = this.getParticleParameters();
 
-        var world = this.getWorld();
+        var world = this.level();
 
         for (int i = 0; i < 8; ++i)
-            world.addParticle(particleEffect, this.getX(), this.getY(), this.getZ(), world.random.nextGaussian() * 0.05, world.random.nextGaussian() * 0.02, world.random.nextGaussian() * 0.05);
+            world.addParticle(particleEffect, this.getX(), this.getY(), this.getZ(), world.getRandom().nextGaussian() * 0.05, world.getRandom().nextGaussian() * 0.02, world.getRandom().nextGaussian() * 0.05);
     }
 
     /**
@@ -78,8 +67,8 @@ public class TomatoEntity extends ThrownItemEntity {
      * @return a particle effect for the tomato item
      */
     @Environment(EnvType.CLIENT)
-    private ParticleEffect getParticleParameters() {
-        return new ItemStackParticleEffect(ParticleTypes.ITEM, getDefaultItem().getDefaultStack());
+    private ParticleOptions getParticleParameters() {
+        return new ItemParticleOption(ParticleTypes.ITEM, getDefaultItem());
     }
 
     /**
@@ -88,7 +77,7 @@ public class TomatoEntity extends ThrownItemEntity {
      * @return the tomato item
      */
     @Override
-    protected Item getDefaultItem() {
+    protected @NonNull Item getDefaultItem() {
         return Paintbrush.TOMATO_ITEM;
     }
 
@@ -98,17 +87,18 @@ public class TomatoEntity extends ThrownItemEntity {
      *
      * @param hitResult the collision hit result
      */
-    protected void onCollision(HitResult hitResult) {
-        super.onCollision(hitResult);
+    @Override
+    protected void onHit(@NonNull HitResult hitResult) {
+        super.onHit(hitResult);
 
-        var world = this.getWorld();
+        var world = this.level();
 
-        if (!world.isClient) {
-            var hitPos = hitResult.getPos();
+        if (!world.isClientSide()) {
+            var hitPos = hitResult.getLocation();
 
-            world.playSound(null, hitPos.x, hitPos.y, hitPos.z, SoundEvents.ENTITY_SLIME_SQUISH, SoundCategory.NEUTRAL, 0.5f, 1f + (world.getRandom().nextFloat() * 0.2f));
+            world.playSound(null, hitPos.x, hitPos.y, hitPos.z, SoundEvents.SLIME_SQUISH, SoundSource.NEUTRAL, 0.5f, 1f + (world.getRandom().nextFloat() * 0.2f));
 
-            world.sendEntityStatus(this, (byte) 3);
+            world.broadcastEntityEvent(this, (byte) 3);
             this.discard();
         }
     }

@@ -32,6 +32,9 @@ bin/
 
 run/
 runServer/
+run-26_1/
+run-server-26_1/
+libs/*.jar
 
 # java
 
@@ -39,7 +42,10 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
-/gradle/
+/gradle/*
+!/gradle/wrapper/
+/gradle/wrapper/*
+!/gradle/wrapper/gradle-wrapper.properties
 /lib/
 
 # Ignore DevAuth tokens

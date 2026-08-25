@@ -2,9 +2,9 @@ package space.ajcool.paintbrush.tokenizer;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
-import net.minecraft.resource.ResourceManager;
-import net.minecraft.util.Identifier;
+import net.fabricmc.fabric.api.resource.v1.reloader.SimpleReloadListener;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
+import org.jspecify.annotations.NonNull;
 import space.ajcool.paintbrush.family.FamilyGroupRegistry;
 import space.ajcool.paintbrush.filtering.PaintbrushFilter;
 
@@ -14,29 +14,28 @@ import space.ajcool.paintbrush.filtering.PaintbrushFilter;
  * Fired on resource reload events (F3+T or world reload).
  */
 @Environment(EnvType.CLIENT)
-public class PaintbrushResourcesReloadListener implements SimpleSynchronousResourceReloadListener {
-
-    /** Unique identifier for this reload listener. */
-    private static final Identifier ID = new Identifier("paintbrush", "resources_reload");
+public class PaintbrushResourcesReloadListener extends SimpleReloadListener<Void> {
 
     /**
-     * Gets the fabric identifier for this reload listener.
+     * Prepares reload data off-thread. The paintbrush loaders read the client resource
+     * manager directly, so there is nothing to prepare here.
      *
-     * @return the unique identifier
+     * @param state the shared reload state
+     * @return null, as no prepared data is needed
      */
     @Override
-    public Identifier getFabricId() {
-        return ID;
+    protected Void prepare(PreparableReloadListener.@NonNull SharedState state) {
+        return null;
     }
 
     /**
-     * Reloads all paintbrush client-side resources.
-     * Called whenever the resource manager reloads.
+     * Reloads all paintbrush client-side resources on the main thread.
      *
-     * @param manager the resource manager
+     * @param data  the prepared data (unused)
+     * @param state the shared reload state
      */
     @Override
-    public void reload(ResourceManager manager) {
+    protected void apply(Void data, PreparableReloadListener.@NonNull SharedState state) {
         TokenLoader.load();
         FamilyGroupRegistry.load();
         PaintbrushFilter.load();

@@ -2,12 +2,12 @@ package space.ajcool.paintbrush.filtering;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.world.BlockView;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
 
 /**
  * Performs raycasting with foliage filtering applied.
@@ -30,37 +30,37 @@ public final class FilteredRaycast {
      * @param reach  the maximum distance to raycast
      * @return the hit result, either hitting a block or missing
      */
-    public static BlockHitResult raycast(PlayerEntity player, double reach) {
-        var start = player.getEyePos();
-        var end = start.add(player.getRotationVec(1.0F).multiply(reach));
-        var context = new RaycastContext(
+    public static BlockHitResult raycast(Player player, double reach) {
+        var start = player.getEyePosition();
+        var end = start.add(player.getViewVector(1.0F).scale(reach));
+        var context = new ClipContext(
                 start,
                 end,
-                RaycastContext.ShapeType.OUTLINE,
-                RaycastContext.FluidHandling.NONE,
+                ClipContext.Block.OUTLINE,
+                ClipContext.Fluid.NONE,
                 player
         );
 
-        return BlockView.raycast(start, end, context, (raycastContext, pos) ->
+        return BlockGetter.traverseBlocks(start, end, context, (raycastContext, pos) ->
         {
-            var world = player.getWorld();
+            var world = player.level();
             var state = world.getBlockState(pos);
             if (state.isAir() || PaintbrushFilter.contains(state)) return null;
 
-            return world.raycastBlock(
-                    raycastContext.getStart(),
-                    raycastContext.getEnd(),
+            return world.clipWithInteractionOverride(
+                    raycastContext.getFrom(),
+                    raycastContext.getTo(),
                     pos,
                     raycastContext.getBlockShape(state, world, pos),
                     state
             );
-        }, raycastContext ->
+        }, _ ->
         {
             var direction = end.subtract(start);
-            return BlockHitResult.createMissed(
+            return BlockHitResult.miss(
                     end,
-                    Direction.getFacing(direction.x, direction.y, direction.z),
-                    BlockPos.ofFloored(end)
+                    Direction.getApproximateNearest(direction),
+                    BlockPos.containing(end)
             );
         });
     }

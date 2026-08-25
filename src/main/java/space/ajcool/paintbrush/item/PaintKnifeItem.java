@@ -1,39 +1,38 @@
 package space.ajcool.paintbrush.item;
 
-import com.conquestrefabricated.content.blocks.block.Slab;
+import com.conquestrefabricated.core.block.properties.ModBlockProperties;
 import com.conquestrefabricated.core.item.family.Family;
 import com.conquestrefabricated.core.item.family.FamilyRegistry;
+import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.datafixers.util.Pair;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.enums.BlockHalf;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.ItemUsageContext;
-import net.minecraft.nbt.NbtHelper;
-import net.minecraft.registry.Registries;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.state.property.DirectionProperty;
-import net.minecraft.state.property.IntProperty;
-import net.minecraft.state.property.Property;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.Hand;
-import net.minecraft.util.TypedActionResult;
-import net.minecraft.util.function.BooleanBiFunction;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.shape.VoxelShapes;
-import net.minecraft.world.World;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
+import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.world.phys.shapes.BooleanOp;
+import net.minecraft.world.phys.shapes.Shapes;
+import org.jspecify.annotations.NonNull;
 import space.ajcool.paintbrush.Paintbrush;
 import space.ajcool.paintbrush.config.PaintbrushConfig;
 
-import static space.ajcool.paintbrush.Paintbrush.PAINT_KNIFE_ITEM;
+import java.util.List;
 
 /**
  * The Paint Knife item implementation.
@@ -47,7 +46,7 @@ public class PaintKnifeItem extends Item {
      *
      * @param settings the item settings
      */
-    public PaintKnifeItem(Settings settings) {
+    public PaintKnifeItem(Properties settings) {
         super(settings);
     }
 
@@ -61,12 +60,12 @@ public class PaintKnifeItem extends Item {
      * @param direction the direction clicked, used for appending/deleting and Ctrl-offset
      * @param delta     the change amount: 1 to increment, -1 to decrement, 0 for special operations
      */
-    public static LayerChangeResult changeBlockLayer(PlayerEntity player, BlockPos pos, Direction direction, int delta) {
-        if (Screen.hasControlDown()) {
-            pos = pos.offset(direction);
+    public static LayerChangeResult changeBlockLayer(Player player, BlockPos pos, Direction direction, int delta) {
+        if (isControlDown()) {
+            pos = pos.relative(direction);
         }
 
-        var world = player.getWorld();
+        var world = player.level();
         var blockState = world.getBlockState(pos);
         var change = resolveLayerChange(world, blockState, pos, direction, delta);
 
@@ -81,19 +80,13 @@ public class PaintKnifeItem extends Item {
             return LayerChangeResult.unchanged(resolvedPos, resolvedState);
         }
 
-        if (!world.canSetBlock(resolvedPos)) {
+        if (!world.isInWorldBounds(resolvedPos)) {
             return LayerChangeResult.outOfBounds(resolvedPos, resolvedState);
         }
 
-        var packetBuffer = PacketByteBufs.create();
+        ClientPlayNetworking.send(new Paintbrush.SetBlockPayload(List.of(Pair.of(resolvedPos, NbtUtils.writeBlockState(resolvedState)))));
 
-        packetBuffer.writeInt(1);
-        packetBuffer.writeBlockPos(resolvedPos);
-        packetBuffer.writeNbt(NbtHelper.fromBlockState(resolvedState));
-
-        ClientPlayNetworking.send(Paintbrush.SET_BLOCK_PACKET_ID, packetBuffer);
-
-        player.playSound(SoundEvents.ITEM_AXE_STRIP, SoundCategory.BLOCKS, .5F, 1.0F);
+        player.playSound(SoundEvents.AXE_STRIP, .5F, 1.0F);
         return LayerChangeResult.sent(resolvedPos, resolvedState);
     }
 
@@ -108,11 +101,11 @@ public class PaintKnifeItem extends Item {
      * @param delta     the requested change amount
      * @return a LayerChange containing the new position and state, or null if no change is possible
      */
-    private static LayerChange resolveLayerChange(World world, BlockState state, BlockPos pos, Direction direction, int delta) {
+    private static LayerChange resolveLayerChange(Level world, BlockState state, BlockPos pos, Direction direction, int delta) {
         var layerProp = getLayerProperty(state);
 
         if (layerProp != null) {
-            var value = state.get(layerProp);
+            int value = state.getValue(layerProp);
 
             if (delta > 0
                     && value >= maxValue(layerProp)
@@ -121,7 +114,7 @@ public class PaintKnifeItem extends Item {
                 if (shouldPromoteToFullBlock(world, state, pos)
                         && isSwappableLayerMember(state.getBlock())
                         && !family.getMembers().isEmpty()) {
-                    return new LayerChange(pos, family.getRoot().getDefaultState());
+                    return new LayerChange(pos, family.getRoot().defaultBlockState());
                 }
 
                 return appendLayerBlock(world, state, family, pos, direction);
@@ -131,11 +124,16 @@ public class PaintKnifeItem extends Item {
                     && value == minValue(layerProp)
                     && !layerProp.getName().equals("level")) {
                 if (!PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE) return null;
-                return new LayerChange(pos, Blocks.AIR.getDefaultState());
+                var family = FamilyRegistry.BLOCKS.getFamily(state.getBlock());
+                if (family.getMembers().isEmpty()
+                        || buildLayerState(family, direction, value) == null) {
+                    return null;
+                }
+                return new LayerChange(pos, Blocks.AIR.defaultBlockState());
             }
 
             var newValue = value + delta;
-            if (layerProp.getValues().contains(newValue)) return new LayerChange(pos, state.with(layerProp, newValue));
+            if (layerProp.getPossibleValues().contains(newValue)) return new LayerChange(pos, state.setValue(layerProp, newValue));
 
             return null;
         }
@@ -182,8 +180,8 @@ public class PaintKnifeItem extends Item {
      * @param state the block state to check
      * @return the layer property, or null if the block has no layer-like properties
      */
-    private static IntProperty getLayerProperty(BlockState state) {
-        var stateManager = state.getBlock().getStateManager();
+    private static IntegerProperty getLayerProperty(BlockState state) {
+        var stateManager = state.getBlock().getStateDefinition();
 
         var layerProp = asIntProperty(stateManager.getProperty("layer"));
         if (layerProp == null) layerProp = asIntProperty(stateManager.getProperty("layers"));
@@ -193,13 +191,29 @@ public class PaintKnifeItem extends Item {
     }
 
     /**
-     * Casts a generic property to an IntProperty if possible.
+     * Casts a generic property to an IntegerProperty if possible.
      *
      * @param property the property to cast
-     * @return the property as an IntProperty, or null if it's not an IntProperty
+     * @return the property as an IntegerProperty, or null if it's not an IntegerProperty
      */
-    private static IntProperty asIntProperty(Property<?> property) {
-        if (property instanceof IntProperty intProperty) return intProperty;
+    private static IntegerProperty asIntProperty(Property<?> property) {
+        if (property instanceof IntegerProperty intProperty) return intProperty;
+
+        return null;
+    }
+
+    /**
+     * Casts a generic property to a {@code EnumProperty<Direction>} if it holds Direction values.
+     *
+     * @param property the property to cast
+     * @return the property as an EnumProperty of Direction, or null if it is not one
+     */
+    private static EnumProperty<Direction> asDirectionProperty(Property<?> property) {
+        if (property instanceof EnumProperty<?> enumProperty && enumProperty.getValueClass() == Direction.class) {
+            @SuppressWarnings("unchecked")
+            var directionProperty = (EnumProperty<Direction>) enumProperty;
+            return directionProperty;
+        }
 
         return null;
     }
@@ -215,21 +229,21 @@ public class PaintKnifeItem extends Item {
      */
     private static BlockState buildHorizontalLayerState(Family<Block> family, Direction direction, int value) {
         for (var member : family.getMembers()) {
-            var memberId = Registries.BLOCK.getId(member).toString();
+            var memberId = BuiltInRegistries.BLOCK.getKey(member).toString();
             if (memberId.endsWith("_layer")) {
-                var state = setLayerValue(member.getDefaultState(), value);
+                var state = setLayerValue(member.defaultBlockState(), value);
                 if (state != null) return state;
             }
         }
 
         for (var member : family.getMembers()) {
-            var memberId = Registries.BLOCK.getId(member).toString();
+            var memberId = BuiltInRegistries.BLOCK.getKey(member).toString();
             if (isPlainSlabId(memberId)) {
-                var state = setLayerValue(member.getDefaultState(), value);
+                var state = setLayerValue(member.defaultBlockState(), value);
                 if (state == null) continue;
 
-                if (state.getBlock().getStateManager().getProperty("type") != null) {
-                    state = state.with(Slab.TYPE_UPDOWN, direction == Direction.DOWN ? BlockHalf.TOP : BlockHalf.BOTTOM);
+                if (state.getBlock().getStateDefinition().getProperty("type") != null) {
+                    state = state.setValue(ModBlockProperties.TYPE_UPDOWN, direction == Direction.DOWN ? Half.TOP : Half.BOTTOM);
                 }
 
                 return state;
@@ -250,20 +264,19 @@ public class PaintKnifeItem extends Item {
      */
     private static BlockState buildVerticalLayerState(Family<Block> family, Direction direction, int value) {
         for (var member : family.getMembers()) {
-            var memberId = Registries.BLOCK.getId(member).toString();
+            var memberId = BuiltInRegistries.BLOCK.getKey(member).toString();
             if (!memberId.endsWith("_vertical_slab")) continue;
 
-            var state = member.getDefaultState();
-            var layerProp = asIntProperty(state.getBlock().getStateManager().getProperty("layer"));
+            var state = member.defaultBlockState();
+            var layerProp = asIntProperty(state.getBlock().getStateDefinition().getProperty("layer"));
             if (layerProp == null) continue;
 
             state = setLayerValue(state, value);
             if (state == null) continue;
 
-            var facingProp = state.getBlock().getStateManager().getProperty("facing");
-            if (facingProp instanceof DirectionProperty directionProperty
-                    && directionProperty.getValues().contains(direction)) {
-                return state.with(directionProperty, direction);
+            var facingProp = asDirectionProperty(state.getBlock().getStateDefinition().getProperty("facing"));
+            if (facingProp != null && facingProp.getPossibleValues().contains(direction)) {
+                return state.setValue(facingProp, direction);
             }
         }
 
@@ -283,12 +296,12 @@ public class PaintKnifeItem extends Item {
      * @param direction   the direction that was clicked
      * @return a layer change for the appended block, or null if appending is not allowed
      */
-    private static LayerChange appendLayerBlock(World world, BlockState sourceState, Family<Block> family, BlockPos pos, Direction direction) {
+    private static LayerChange appendLayerBlock(Level world, BlockState sourceState, Family<Block> family, BlockPos pos, Direction direction) {
         if (!PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND || family.getMembers().isEmpty()) return null;
         if (!canAppendFrom(world, sourceState, pos, direction)) return null;
 
-        var targetPos = pos.offset(direction);
-        if (!world.getBlockState(targetPos).isReplaceable()) return null;
+        var targetPos = pos.relative(direction);
+        if (!world.getBlockState(targetPos).canBeReplaced()) return null;
 
         var newState = buildLayerState(family, direction, 1);
         return newState == null ? null : new LayerChange(targetPos, newState);
@@ -309,9 +322,9 @@ public class PaintKnifeItem extends Item {
                 ? maxValue(layerProp)
                 : Math.max(minValue(layerProp), Math.min(value, maxValue(layerProp)));
 
-        if (!layerProp.getValues().contains(targetValue)) return null;
+        if (!layerProp.getPossibleValues().contains(targetValue)) return null;
 
-        return state.with(layerProp, targetValue);
+        return state.setValue(layerProp, targetValue);
     }
 
     /**
@@ -320,8 +333,8 @@ public class PaintKnifeItem extends Item {
      * @param property the integer property to check
      * @return the maximum value this property can hold
      */
-    private static int maxValue(IntProperty property) {
-        return property.getValues().stream().max(Integer::compareTo).orElse(0);
+    private static int maxValue(IntegerProperty property) {
+        return property.getPossibleValues().stream().max(Integer::compareTo).orElse(0);
     }
 
     /**
@@ -330,8 +343,8 @@ public class PaintKnifeItem extends Item {
      * @param property the integer property to check
      * @return the minimum value this property can hold
      */
-    private static int minValue(IntProperty property) {
-        return property.getValues().stream().min(Integer::compareTo).orElse(0);
+    private static int minValue(IntegerProperty property) {
+        return property.getPossibleValues().stream().min(Integer::compareTo).orElse(0);
     }
 
     /**
@@ -341,7 +354,7 @@ public class PaintKnifeItem extends Item {
      * @return true if the block is a swappable layer variant
      */
     private static boolean isSwappableLayerMember(Block block) {
-        var blockId = Registries.BLOCK.getId(block).toString();
+        var blockId = BuiltInRegistries.BLOCK.getKey(block).toString();
 
         return blockId.endsWith("_layer")
                 || blockId.endsWith("_vertical_slab")
@@ -360,7 +373,7 @@ public class PaintKnifeItem extends Item {
      * @param pos   the block position
      * @return true if the block should be promoted to its family root
      */
-    private static boolean shouldPromoteToFullBlock(World world, BlockState state, BlockPos pos) {
+    private static boolean shouldPromoteToFullBlock(Level world, BlockState state, BlockPos pos) {
         return switch (PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS) {
             case ALL -> true;
             case NONE -> false;
@@ -377,10 +390,10 @@ public class PaintKnifeItem extends Item {
      * @param direction the clicked face
      * @return true if the source fills the clicked face and is full or already at max layer
      */
-    private static boolean canAppendFrom(World world, BlockState state, BlockPos pos, Direction direction) {
+    private static boolean canAppendFrom(Level world, BlockState state, BlockPos pos, Direction direction) {
         if (!isVisuallyFullCube(world, state, pos) && !isAtMaxLayer(state)) return false;
 
-        return Block.isFaceFullSquare(state.getOutlineShape(world, pos), direction);
+        return Block.isFaceFull(state.getShape(world, pos), direction);
     }
 
     /**
@@ -393,7 +406,7 @@ public class PaintKnifeItem extends Item {
         var layerProp = getLayerProperty(state);
         if (layerProp == null || layerProp.getName().equals("level")) return false;
 
-        return state.get(layerProp) >= maxValue(layerProp);
+        return state.getValue(layerProp) >= maxValue(layerProp);
     }
 
     /**
@@ -406,11 +419,11 @@ public class PaintKnifeItem extends Item {
      * @return true if the block's outline shape is not a full cube
      */
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
-    private static boolean isVisuallyFullCube(World world, BlockState state, BlockPos pos) {
-        var shape = state.getOutlineShape(world, pos);
+    private static boolean isVisuallyFullCube(Level world, BlockState state, BlockPos pos) {
+        var shape = state.getShape(world, pos);
         if (shape.isEmpty()) return false;
 
-        return !VoxelShapes.matchesAnywhere(VoxelShapes.fullCube(), shape, BooleanBiFunction.ONLY_FIRST);
+        return !Shapes.joinIsNotEmpty(Shapes.block(), shape, BooleanOp.ONLY_FIRST);
     }
 
     /**
@@ -428,6 +441,12 @@ public class PaintKnifeItem extends Item {
                 && !blockId.endsWith("_vertical_corner_slab");
     }
 
+    private static boolean isControlDown() {
+        var window = Minecraft.getInstance().getWindow();
+        return InputConstants.isKeyDown(window, InputConstants.KEY_LCONTROL)
+                || InputConstants.isKeyDown(window, InputConstants.KEY_RCONTROL);
+    }
+
     /**
      * Reports a paint knife operation result to the player and logs it if debug output is enabled.
      * Only sends messages and logs if PAINTKNIFE_DEBUG is true.
@@ -436,25 +455,25 @@ public class PaintKnifeItem extends Item {
      * @param outcome a string describing the outcome (e.g., "SENT", "UNCHANGED")
      * @param result  the layer change result, or null if no change was attempted
      */
-    public static void reportDebugResult(PlayerEntity player, String outcome, LayerChangeResult result) {
+    public static void reportDebugResult(Player player, String outcome, LayerChangeResult result) {
         if (!PaintbrushConfig.PAINTKNIFE_DEBUG) {
             return;
         }
 
-        var message = net.minecraft.text.Text.empty()
-                .append(net.minecraft.text.Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                .append(net.minecraft.text.Text.literal("Paint knife ").formatted(Formatting.DARK_GRAY))
-                .append(net.minecraft.text.Text.literal(outcome).formatted(Formatting.AQUA));
+        var message = net.minecraft.network.chat.Component.empty()
+                .append(net.minecraft.network.chat.Component.literal("Paintbrush: ").withStyle(ChatFormatting.DARK_AQUA))
+                .append(net.minecraft.network.chat.Component.literal("Paint knife ").withStyle(ChatFormatting.DARK_GRAY))
+                .append(net.minecraft.network.chat.Component.literal(outcome).withStyle(ChatFormatting.AQUA));
 
         if (result != null && result.pos() != null) {
-            message.append(net.minecraft.text.Text.literal(" @ " + result.pos().toShortString()).formatted(Formatting.GRAY));
+            message.append(net.minecraft.network.chat.Component.literal(" @ " + result.pos().toShortString()).withStyle(ChatFormatting.GRAY));
         }
 
         if (result != null && result.state() != null) {
-            message.append(net.minecraft.text.Text.literal(" -> " + result.state()).formatted(Formatting.GRAY));
+            message.append(net.minecraft.network.chat.Component.literal(" -> " + result.state()).withStyle(ChatFormatting.GRAY));
         }
 
-        player.sendMessage(message);
+        player.sendSystemMessage(message);
 
         if (result == null) {
             Paintbrush.LOGGER.info("Paintbrush - Paint knife result={} player={}", outcome, player.getName().getString());
@@ -474,9 +493,8 @@ public class PaintKnifeItem extends Item {
      * @return a typed action result indicating the action was consumed
      */
     @Override
-    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
-        ItemStack itemStack = user.getStackInHand(hand);
-        return TypedActionResult.consume(itemStack);
+    public @NonNull InteractionResult use(@NonNull Level world, @NonNull Player user, @NonNull InteractionHand hand) {
+        return InteractionResult.CONSUME;
     }
 
     /**
@@ -487,34 +505,34 @@ public class PaintKnifeItem extends Item {
      * @return CONSUME if the action was processed, FAIL if cooldown active or invalid target
      */
     @Override
-    public ActionResult useOnBlock(ItemUsageContext itemUsageContext) {
-        var world = itemUsageContext.getWorld();
-        if (!world.isClient()) {
-            return ActionResult.CONSUME;
+    public @NonNull InteractionResult useOn(UseOnContext itemUsageContext) {
+        var world = itemUsageContext.getLevel();
+        if (!world.isClientSide()) {
+            return InteractionResult.CONSUME;
         }
 
         var player = itemUsageContext.getPlayer();
         if (player == null) {
-            return ActionResult.PASS;
+            return InteractionResult.PASS;
         }
 
-        if (player.getItemCooldownManager().isCoolingDown(PAINT_KNIFE_ITEM)) {
+        if (player.getCooldowns().isOnCooldown(itemUsageContext.getItemInHand())) {
             reportDebugResult(player, "cooling down", null);
-            return ActionResult.FAIL;
+            return InteractionResult.FAIL;
         }
 
-        if (!world.canSetBlock(itemUsageContext.getBlockPos())) {
-            reportDebugResult(player, "OUT_OF_BOUNDS", LayerChangeResult.outOfBounds(itemUsageContext.getBlockPos(), null));
-            return ActionResult.FAIL;
+        if (!world.isInWorldBounds(itemUsageContext.getClickedPos())) {
+            reportDebugResult(player, "OUT_OF_BOUNDS", LayerChangeResult.outOfBounds(itemUsageContext.getClickedPos(), null));
+            return InteractionResult.FAIL;
         }
 
-        var result = changeBlockLayer(player, itemUsageContext.getBlockPos(), itemUsageContext.getSide(), 1);
+        var result = changeBlockLayer(player, itemUsageContext.getClickedPos(), itemUsageContext.getClickedFace(), 1);
         if (result.outcome() == LayerChangeOutcome.SENT) {
-            player.getItemCooldownManager().set(PAINT_KNIFE_ITEM, 4);
+            player.getCooldowns().addCooldown(itemUsageContext.getItemInHand(), 4);
         }
 
         reportDebugResult(player, result.outcome().name(), result);
-        return ActionResult.FAIL;
+        return InteractionResult.FAIL;
     }
 
     /**

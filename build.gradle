@@ -1,5 +1,7 @@
+import java.nio.file.Files
+
 plugins {
-	id "fabric-loom" version "1.7-SNAPSHOT"
+	id "net.fabricmc.fabric-loom" version "1.17.17"
 	id "maven-publish"
 }
 
@@ -11,27 +13,37 @@ base {
 }
 
 repositories {
+	mavenCentral()
 	maven { url "https://maven.enginehub.org/repo/" }
 	maven { url "https://cursemaven.com/" }
 	maven { url "https://api.modrinth.com/maven" }
-	maven { url = "https://pkgs.dev.azure.com/djtheredstoner/DevAuth/_packaging/public/maven/v1" }
 }
+
+def clientRunDir = "run-26_1"
+def serverRunDir = "run-server-26_1"
+def worldEditRuntime = configurations.detachedConfiguration(
+		dependencies.create("com.sk89q.worldedit:worldedit-fabric-mc26.1.2:${project.worldedit_version}")
+)
+def devRuntimeMods = [
+		[name: "ConquestReforged-fabric", version: "${project.conquest_version}", source: file("libs/ConquestReforged-fabric-${project.conquest_version}.jar"), runtimeEnv: "both"],
+		[name: "worldedit-fabric-mc26.1.2", version: "${project.worldedit_version}", source: worldEditRuntime, runtimeEnv: "both"]
+]
 
 loom {
 	accessWidenerPath = file("src/main/resources/paintbrush.accesswidener")
 
 	runs {
 		client {
-			property("devauth.configDir", getRootProject().file(".devauth").absolutePath)
-			runDir = "run"
 			client()
-			vmArg "-Xmx8G"
-			vmArg "-Xms8G"
+			getRunDirectory().set(layout.projectDirectory.dir(clientRunDir))
+			getJvmArguments().addAll("-Xmx8G", "-Xms8G")
+			getSystemProperties().put("devauth.enabled", "1")
+			getSystemProperties().put("devauth.account", "main")
 		}
 
 		server {
-			runDir = "runServer"
 			server()
+			getRunDirectory().set(layout.projectDirectory.dir(serverRunDir))
 		}
 	}
 }
@@ -39,30 +51,35 @@ loom {
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-    compileOnly("com.sk89q.worldedit:worldedit-core:7.2.15")
+	// Swap this to modApi("maven.modrinth:conquest-reforged:<26.1 version>") once Conquest publishes for 26.1.
+	compileOnly files("libs/ConquestReforged-fabric-${project.conquest_version}.jar")
 
-	modApi("maven.modrinth:conquest-reforged:1.4.1.4")
-	modApi("com.sk89q.worldedit:worldedit-fabric-mc1.20:7.2.15")
+	implementation "com.sk89q.worldedit:worldedit-fabric-mc26.1.2:${project.worldedit_version}"
+	compileOnly "com.sk89q.worldedit:worldedit-core:${project.worldedit_version}"
 
-	modRuntimeOnly("me.djtheredstoner:DevAuth-fabric:${devauth_version}")
+	localRuntime "net.litetex.mcm:dev-auth-neo:${project.devauth_version}"
 }
 
 processResources {
 	inputs.property "version", project.version
+	inputs.property "minecraft_version", project.minecraft_version
+	inputs.property "loader_version", project.loader_version
+	inputs.property "minecraft_dependency", ">=26.1"
+	inputs.property "java_dependency", ">=25"
+	filteringCharset = "UTF-8"
 
 	filesMatching("fabric.mod.json") {
-		expand "version": project.version
+		expand "version": project.version,
+				"minecraft_version": project.minecraft_version,
+				"loader_version": project.loader_version,
+				"minecraft_dependency": ">=26.1",
+				"java_dependency": ">=25"
 	}
-}
-
-tasks.withType(JavaCompile).configureEach {
-	it.options.release = 17
 }
 
 java {
@@ -71,8 +88,94 @@ java {
 	// If you remove this line, sources will not be generated.
 	withSourcesJar()
 
-	sourceCompatibility = JavaVersion.VERSION_17
-	targetCompatibility = JavaVersion.VERSION_17
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+
+	tasks.withType(JavaCompile).configureEach {
+		options.release = 25
+	}
+}
+
+tasks.register("setupDevEnv") {
+	description = "Sets up the 26.1 development run directories with runtime mods"
+	group = "ide"
+
+	doLast {
+		def serverDir = file(serverRunDir)
+		def serverModsDir = new File(serverDir, "mods")
+		def clientDir = file(clientRunDir)
+		def clientModsDir = new File(clientDir, "mods")
+
+		if (!serverDir.exists()) {
+			serverDir.mkdirs()
+			println "Created directory: ${serverRunDir}"
+		}
+
+		if (!serverModsDir.exists()) {
+			serverModsDir.mkdirs()
+			println "Created directory: ${serverRunDir}/mods"
+		}
+
+		if (!clientDir.exists()) {
+			clientDir.mkdirs()
+			println "Created directory: ${clientRunDir}"
+		}
+
+		if (!clientModsDir.exists()) {
+			clientModsDir.mkdirs()
+			println "Created directory: ${clientRunDir}/mods"
+		}
+
+		devRuntimeMods.each { mod ->
+			def downloadToServer = mod.runtimeEnv == "server" || mod.runtimeEnv == "both"
+			def downloadToClient = mod.runtimeEnv == "client" || mod.runtimeEnv == "both"
+
+			if (downloadToServer) {
+				def serverFile = new File(serverModsDir, "${mod.name}-${mod.version}.jar")
+				if (!serverFile.exists()) {
+					def sourceFile = resolveDevRuntimeSource(mod.source)
+					if (sourceFile == null || !sourceFile.exists()) {
+						println "Skipping ${mod.name}; local jar is missing"
+						return
+					}
+					println "Copying ${mod.name} to server..."
+					Files.copy(sourceFile.toPath(), serverFile.toPath())
+					println "Copied ${mod.name} to server"
+				} else {
+					println "${mod.name} already exists in server, skipping"
+				}
+
+				if (mod.runtimeEnv == "both") {
+					def clientFile = new File(clientModsDir, "${mod.name}-${mod.version}.jar")
+					if (!clientFile.exists()) {
+						println "Creating symlink for ${mod.name} in client..."
+						Files.createSymbolicLink(clientFile.toPath(), serverFile.toPath())
+						println "Symlink created for ${mod.name}"
+					}
+				}
+			} else if (downloadToClient) {
+				def clientFile = new File(clientModsDir, "${mod.name}-${mod.version}.jar")
+				if (!clientFile.exists()) {
+					def sourceFile = resolveDevRuntimeSource(mod.source)
+					if (sourceFile == null || !sourceFile.exists()) {
+						println "Skipping ${mod.name}; local jar is missing"
+						return
+					}
+					println "Copying ${mod.name} to client..."
+					Files.copy(sourceFile.toPath(), clientFile.toPath())
+					println "Copied ${mod.name}"
+				} else {
+					println "${mod.name} already exists, skipping"
+				}
+			}
+		}
+	}
+}
+
+private File resolveDevRuntimeSource(Object source) {
+	if (source instanceof File) return source
+	if (source instanceof FileCollection) return source.files.find { it.name.startsWith("worldedit-fabric-mc26.1.2") && it.name.endsWith(".jar") }
+	return null
 }
 
 jar {

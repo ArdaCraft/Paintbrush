@@ -4,14 +4,14 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.tag.TagKey;
-import net.minecraft.resource.Resource;
-import net.minecraft.util.Identifier;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.TagKey;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,8 +56,8 @@ public final class PaintbrushFilter {
      * exactly, or bare keywords matched as lowercase block state substrings.
      */
     public static void load() {
-        var id = new Identifier("paintbrush", "paintbrush-filter.json");
-        Optional<Resource> resource = MinecraftClient.getInstance()
+        var id = Identifier.fromNamespaceAndPath("paintbrush", "paintbrush-filter.json");
+        Optional<Resource> resource = Minecraft.getInstance()
                 .getResourceManager()
                 .getResource(id);
 
@@ -67,7 +67,7 @@ public final class PaintbrushFilter {
             return;
         }
 
-        try (InputStream stream = resource.get().getInputStream()) {
+        try (InputStream stream = resource.get().open()) {
             var type = new TypeToken<List<String>>() {
             }.getType();
             List<String> data = new Gson().fromJson(new InputStreamReader(stream), type);
@@ -146,7 +146,7 @@ public final class PaintbrushFilter {
             return Optional.empty();
         }
 
-        return Optional.of(TagKey.of(RegistryKeys.BLOCK, identifier));
+        return Optional.of(TagKey.create(Registries.BLOCK, identifier));
     }
 
     /**
@@ -159,12 +159,12 @@ public final class PaintbrushFilter {
      */
     public static boolean contains(BlockState blockState) {
         for (var tag : FILTER_TAGS) {
-            if (blockState.isIn(tag)) {
+            if (blockState.is(tag)) {
                 return true;
             }
         }
 
-        if (!FILTER_IDS.isEmpty() && FILTER_IDS.contains(Registries.BLOCK.getId(blockState.getBlock()))) {
+        if (!FILTER_IDS.isEmpty() && FILTER_IDS.contains(BuiltInRegistries.BLOCK.getKey(blockState.getBlock()))) {
             return true;
         }
 

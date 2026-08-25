@@ -5,11 +5,11 @@ import com.conquestrefabricated.core.item.family.FamilyRegistry;
 import com.google.gson.Gson;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.block.Block;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.registry.Registries;
-import net.minecraft.resource.Resource;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.world.level.block.Block;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,18 +37,12 @@ public final class FamilyGroupRegistry {
     private static List<CompiledGroup> groups = List.of();
 
     /**
-     * Private constructor to prevent instantiation.
-     */
-    private FamilyGroupRegistry() {
-    }
-
-    /**
      * Loads family groups from the family-groups.json resource file.
      * Compiles templates and initializes the registry.
      */
     public static void load() {
-        var id = new Identifier("paintbrush", "family-groups.json");
-        Optional<Resource> resource = MinecraftClient.getInstance()
+        var id = Identifier.fromNamespaceAndPath("paintbrush", "family-groups.json");
+        Optional<Resource> resource = Minecraft.getInstance()
                 .getResourceManager()
                 .getResource(id);
 
@@ -58,7 +52,7 @@ public final class FamilyGroupRegistry {
             return;
         }
 
-        try (InputStream stream = resource.get().getInputStream()) {
+        try (InputStream stream = resource.get().open()) {
             var data = new Gson().fromJson(new InputStreamReader(stream), GroupData.class);
             if (data == null) {
                 groups = List.of();
@@ -154,7 +148,7 @@ public final class FamilyGroupRegistry {
      * @return the redirected paint family, or the original if no redirection is needed
      */
     public static Family<Block> redirect(Family<Block> paintFamily, Family<Block> targetFamily) {
-        if (paintFamily == null || targetFamily == null) return paintFamily;
+        if (paintFamily == null || paintFamily.isAbsent() || targetFamily == null || targetFamily.isAbsent()) return paintFamily;
 
         for (var group : groups) {
             var paintMatch = group.match(paintFamily);
@@ -172,13 +166,13 @@ public final class FamilyGroupRegistry {
                 Family<Block> redirectedFamily;
 
                 try {
-                    redirectedFamily = FamilyRegistry.BLOCKS.getFamily(new Identifier(redirectedFamilyId));
+                    redirectedFamily = FamilyRegistry.BLOCKS.getFamily(Identifier.parse(redirectedFamilyId));
                 } catch (Exception e) {
                     LOGGER.debug("Paintbrush - Invalid redirected family id {}", redirectedFamilyId);
                     continue;
                 }
 
-                if (redirectedFamily == null || redirectedFamily.getMembers().isEmpty()) continue;
+                if (redirectedFamily == null || redirectedFamily.isAbsent() || redirectedFamily.getMembers().isEmpty()) continue;
 
                 return redirectedFamily;
             }
@@ -199,7 +193,7 @@ public final class FamilyGroupRegistry {
      */
     public static Optional<String> describe(Block block) {
         var family = FamilyRegistry.BLOCKS.getFamily(block);
-        if (family == null) return Optional.empty();
+        if (family == null || family.isAbsent()) return Optional.empty();
 
         for (var group : groups) {
             var match = group.match(family);
@@ -286,7 +280,7 @@ public final class FamilyGroupRegistry {
             Optional<FamilyMatch> result = Optional.empty();
 
             for (var member : family.getMembers()) {
-                var id = Registries.BLOCK.getId(member).toString();
+                var id = BuiltInRegistries.BLOCK.getKey(member).toString();
 
                 for (var template : templates) {
                     var match = template.match(id);
