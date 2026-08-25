@@ -1,23 +1,23 @@
 package space.ajcool.paintbrush;
 
-import com.conquestrefabricated.core.item.family.Family;
 import com.conquestrefabricated.core.item.family.FamilyRegistry;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
-import net.minecraft.block.Block;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.render.entity.FlyingItemEntityRenderer;
@@ -31,170 +31,340 @@ import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import space.ajcool.paintbrush.tokenizer.TokenLoader;
+import space.ajcool.paintbrush.config.FullBlockMode;
+import space.ajcool.paintbrush.config.PaintbrushConfig;
+import space.ajcool.paintbrush.family.FamilyGroupRegistry;
+import space.ajcool.paintbrush.item.PaintKnifeItem.LayerChangeOutcome;
+import space.ajcool.paintbrush.item.PaintKnifeItem.LayerChangeResult;
+import space.ajcool.paintbrush.render.PaintbrushHighlightRenderer;
+import space.ajcool.paintbrush.state.PaintbrushKeys;
+import space.ajcool.paintbrush.tokenizer.PaintbrushResourcesReloadListener;
 import space.ajcool.paintbrush.tokenizer.TokenRegistry;
-import space.ajcool.paintbrush.tokenizer.TokenReloadListener;
-
-import java.util.Iterator;
 
 import static space.ajcool.paintbrush.Paintbrush.*;
 import static space.ajcool.paintbrush.item.PaintKnifeItem.changeBlockLayer;
+import static space.ajcool.paintbrush.item.PaintKnifeItem.reportDebugResult;
 
+/**
+ * Client-side mod initialization for Paintbrush.
+ * Registers client-side event handlers for block interactions, renders, and commands.
+ * Manages client configuration and resource reloading for tokens and filters.
+ */
 @Environment(EnvType.CLIENT)
-public class PaintbrushClient implements ClientModInitializer
-{
-	@Override
-	public void onInitializeClient()
-	{
-		EntityRendererRegistry.register(Paintbrush.TOMATO, FlyingItemEntityRenderer::new);
+public class PaintbrushClient implements ClientModInitializer {
+    /**
+     * Initializes the client-side mod components.
+     * Registers attack block callbacks for paintbrush and paint knife interactions.
+     * Registers client commands and sets up HUD rendering and resource listeners.
+     */
+    @Override
+    public void onInitializeClient() {
+        PaintbrushConfig.load();
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
+        {
+            var player = client.player;
+            if (player == null) return;
 
-		AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
-			if (player.isSpectator()) return ActionResult.PASS;
+            syncBlockToggles(player);
+        });
+        PaintbrushKeys.register();
 
-			var itemStack = player.getMainHandStack();
+        EntityRendererRegistry.register(Paintbrush.TOMATO, FlyingItemEntityRenderer::new);
 
-			if (itemStack.getItem().equals(PAINTBRUSH_ITEM)) return handlePaintbrushInteraction(player, itemStack, pos);
-			if (itemStack.getItem().equals(PAINT_KNIFE_ITEM)) return handlePaintKnifeInteraction(player, itemStack, pos, direction);
+        AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
+            if (player.isSpectator()) return ActionResult.PASS;
 
-			return ActionResult.PASS;
-		});
+            var itemStack = player.getMainHandStack();
+
+            if (itemStack.getItem().equals(PAINTBRUSH_ITEM)) return handlePaintbrushInteraction(player, itemStack, pos);
+            if (itemStack.getItem().equals(PAINT_KNIFE_ITEM))
+                return handlePaintKnifeInteraction(player, itemStack, pos, direction);
+
+            return ActionResult.PASS;
+        });
 
         // Registering client side commands
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             configureClientCommand("paintbrush", dispatcher);
             configureClientCommand("pb", dispatcher);
+            dispatcher.register(ClientCommandManager.literal("paintknife")
+                    .executes(this::givePaintKnife)
+                    .then(ClientCommandManager.literal("toggle")
+                            .executes(this::togglePaintKnifeOperations))
+                    .then(ClientCommandManager.literal("delete")
+                            .executes(this::togglePaintKnifeDelete))
+                    .then(ClientCommandManager.literal("append")
+                            .executes(this::togglePaintKnifeAppend))
+                    .then(ClientCommandManager.literal("fullblocks")
+                            .executes(this::cyclePaintKnifeFullBlocks)
+                            .then(ClientCommandManager.literal("all")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.ALL)))
+                            .then(ClientCommandManager.literal("partial")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.PARTIAL)))
+                            .then(ClientCommandManager.literal("none")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.NONE))))
+                    .then(ClientCommandManager.literal("debug")
+                            .executes(this::togglePaintKnifeDebug)));
+            dispatcher.register(ClientCommandManager.literal("pk")
+                    .executes(this::givePaintKnife)
+                    .then(ClientCommandManager.literal("toggle")
+                            .executes(this::togglePaintKnifeOperations))
+                    .then(ClientCommandManager.literal("delete")
+                            .executes(this::togglePaintKnifeDelete))
+                    .then(ClientCommandManager.literal("append")
+                            .executes(this::togglePaintKnifeAppend))
+                    .then(ClientCommandManager.literal("fullblocks")
+                            .executes(this::cyclePaintKnifeFullBlocks)
+                            .then(ClientCommandManager.literal("all")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.ALL)))
+                            .then(ClientCommandManager.literal("partial")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.PARTIAL)))
+                            .then(ClientCommandManager.literal("none")
+                                    .executes(ctx -> setFullBlocks(ctx, FullBlockMode.NONE))))
+                    .then(ClientCommandManager.literal("debug")
+                            .executes(this::togglePaintKnifeDebug)));
         });
+
+        HudRenderCallback.EVENT.register((drawContext, tickDelta) ->
+        {
+            if (!PaintbrushConfig.FILTER_FOLIAGE) return;
+
+            drawContext.drawText(MinecraftClient.getInstance().textRenderer, Text.translatable("paintbrush.filtering_foliage"), 20, 20, 0xFFFFFFFF, true);
+        });
+
+        WorldRenderEvents.LAST.register(PaintbrushHighlightRenderer::render);
 
         // Token management
         ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES)
-                .registerReloadListener(new TokenReloadListener());
-	}
+                .registerReloadListener(new PaintbrushResourcesReloadListener());
+    }
 
-	private ActionResult handlePaintbrushInteraction(PlayerEntity player, ItemStack itemStack, BlockPos pos)
-	{
-		var cooldownManager = player.getItemCooldownManager();
-		if (cooldownManager.isCoolingDown(PAINTBRUSH_ITEM)) return ActionResult.CONSUME;
+    /**
+     * Handles primary attack with the paintbrush to copy a block material or state.
+     * If Ctrl is held, copies the exact block state (strict mode); otherwise copies the block's family root.
+     * Updates the paintbrush NBT and sends synchronization packet to the server.
+     *
+     * @param player    the player using the paintbrush
+     * @param itemStack the paintbrush item stack
+     * @param pos       the block position being clicked
+     * @return FAIL to cancel the default attack behaviour
+     */
+    private ActionResult handlePaintbrushInteraction(PlayerEntity player, ItemStack itemStack, BlockPos pos) {
+        var cooldownManager = player.getItemCooldownManager();
+        if (cooldownManager.isCoolingDown(PAINTBRUSH_ITEM)) return ActionResult.CONSUME;
 
-		var blockState = player.getWorld().getBlockState(pos);
-		var material = Registries.BLOCK.getId(blockState.getBlock());
+        var blockState = player.getWorld().getBlockState(pos);
+        var material = Registries.BLOCK.getId(blockState.getBlock());
 
-		// Set internal NBT for block material and state
-		var paintNbt = itemStack.getOrCreateSubNbt("paintbrush");
-		paintNbt.put("material", NbtString.of(material.toString()));
+        // Set internal NBT for block material and state
+        var paintNbt = itemStack.getOrCreateSubNbt("paintbrush");
+        paintNbt.put("material", NbtString.of(material.toString()));
 
-		var iHaveAState = false;
+        var iHaveAState = false;
 
-		if (paintNbt.contains("state")) paintNbt.remove("state");
-		if (Screen.hasControlDown())
-		{
-			paintNbt.put("state", NbtHelper.fromBlockState(blockState));
-			iHaveAState = true;
-		}
-		else blockState = FamilyRegistry.BLOCKS.getFamily(material).getRoot().getDefaultState();
+        if (paintNbt.contains("state")) paintNbt.remove("state");
+        if (Screen.hasControlDown()) {
+            paintNbt.put("state", NbtHelper.fromBlockState(blockState));
+            iHaveAState = true;
+        } else {
+            var paintFamily = FamilyRegistry.BLOCKS.getFamily(blockState.getBlock());
 
-		// Set display.Lore NBT so values are viewable in inventory
-		var displayNbt = itemStack.getOrCreateSubNbt("display");
-		var loreList = displayNbt.getList("Lore", 8);
+            if (!paintFamily.isAbsent() && !paintFamily.getMembers().isEmpty()) {
+                blockState = paintFamily.getRoot().getDefaultState();
+            }
+        }
 
-		loreList.clear();
-		loreList.add(NbtString.of("{\"color\":\"blue\", \"text\":\"" + material + "\"}"));
+        // Set display.Lore NBT so values are viewable in inventory
+        var displayNbt = itemStack.getOrCreateSubNbt("display");
+        var loreList = displayNbt.getList("Lore", 8);
 
-		if (iHaveAState)
-		{
-			var stateString = blockState.toString().split("}");
-			if (stateString.length > 1)
-			{
-				loreList.add(NbtString.of("{\"color\":\"blue\", \"text\":\"" + stateString[1] + "\"}"));
-			}
-		}
+        loreList.clear();
+        loreList.add(NbtString.of("{\"color\":\"blue\", \"text\":\"" + material + "\"}"));
 
-		displayNbt.put("Lore", loreList);
+        if (iHaveAState) {
+            var stateString = blockState.toString().split("}");
+            if (stateString.length > 1) {
+                loreList.add(NbtString.of("{\"color\":\"blue\", \"text\":\"" + stateString[1] + "\"}"));
+            }
+        }
 
-		// Set Item name
-		var localName = Text.translatable(blockState.getBlock().getTranslationKey());
-		var name = Text.empty()
-				.append(localName)
-				.append(" Paintbrush")
-				.formatted(iHaveAState ? Formatting.RED : Formatting.AQUA);
+        displayNbt.put("Lore", loreList);
 
-		if (paintNbt.contains("size"))
-		{
-			var size =  paintNbt.getInt("size");
-			if (size > 1) name.append(Text.literal(" (" + size + ")").formatted(Formatting.GRAY));
-		}
+        itemStack.setCustomName(PaintbrushNaming.buildBrushName(itemStack, Registries.BLOCK.getReadOnlyWrapper()));
 
-		itemStack.setCustomName(name);
+        player.getItemCooldownManager().set(PAINTBRUSH_ITEM, 5);
+        player.playSound(SoundEvents.BLOCK_SLIME_BLOCK_BREAK, 0.2F, 1.0F);
 
-		player.getItemCooldownManager().set(PAINTBRUSH_ITEM, 5);
-		player.playSound(SoundEvents.BLOCK_SLIME_BLOCK_BREAK, 0.2F, 1.0F);
+        player.getInventory().markDirty();
 
-		player.getInventory().markDirty();
+        MinecraftClient.getInstance().inGameHud.heldItemTooltipFade = 40;
 
-		MinecraftClient.getInstance().inGameHud.heldItemTooltipFade = 40;
+        var packetBuffer = PacketByteBufs.create();
+        packetBuffer.writeInt(player.getInventory().getSlotWithStack(itemStack));
+        packetBuffer.writeItemStack(itemStack);
 
-		var packetBuffer = PacketByteBufs.create();
-		packetBuffer.writeInt(player.getInventory().getSlotWithStack(itemStack));
-		packetBuffer.writeItemStack(itemStack);
+        ClientPlayNetworking.send(Paintbrush.SET_ITEMSTACK_PACKET_ID, packetBuffer);
 
-		ClientPlayNetworking.send(Paintbrush.SET_ITEMSTACK_PACKET_ID, packetBuffer);
+        return ActionResult.FAIL;
+    }
 
-		return ActionResult.FAIL;
-	}
+    /**
+     * Handles primary attack with the paint knife to decrement layer/level properties.
+     * Decrements the targeted block's layer property by 1.
+     *
+     * @param player           the player using the paint knife
+     * @param ignoredItemStack the paint knife item stack
+     * @param pos              the block position being clicked
+     * @param direction        the side of the block that was clicked
+     * @return FAIL to cancel the default attack behaviour
+     */
+    @SuppressWarnings("SameReturnValue")
+    private ActionResult handlePaintKnifeInteraction(PlayerEntity player, ItemStack ignoredItemStack, BlockPos pos, Direction direction) {
+        if (player.getItemCooldownManager().isCoolingDown(PAINT_KNIFE_ITEM)) {
+            reportDebugResult(player, "cooling down", null);
+            return ActionResult.FAIL;
+        }
 
-	private ActionResult handlePaintKnifeInteraction(PlayerEntity player, ItemStack itemStack, BlockPos pos, Direction direction)
-	{
-		if (player.getItemCooldownManager().isCoolingDown(PAINT_KNIFE_ITEM)) return ActionResult.FAIL;
-		player.getItemCooldownManager().set(PAINT_KNIFE_ITEM, 4);
+        var result = changeBlockLayer(player, pos, direction, -1);
+        if (result.outcome() == LayerChangeOutcome.SENT) {
+            player.getItemCooldownManager().set(PAINT_KNIFE_ITEM, 4);
+        }
 
-		changeBlockLayer(player, pos, direction, -1);
+        reportDebugResult(player, describePaintKnifeOutcome(result), result);
 
-		return ActionResult.FAIL;
-	}
+        return ActionResult.FAIL;
+    }
 
-    private void configureClientCommand(String commandName, CommandDispatcher<FabricClientCommandSource> dispatcher)
-    {
+    /**
+     * Mirrors the current block-toggle suppression setting into the local static map and syncs it to the server.
+     * This keeps common interaction code consistent on both sides after join and after runtime config changes.
+     *
+     * @param player the player whose preference should be synchronized
+     */
+    private void syncBlockToggles(PlayerEntity player) {
+        Paintbrush.setBlockTogglesDisabled(player.getUuid(), PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
+
+        var packetBuffer = PacketByteBufs.create();
+        packetBuffer.writeBoolean(PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
+        ClientPlayNetworking.send(SET_BLOCK_TOGGLES_PACKET_ID, packetBuffer);
+    }
+
+    /**
+     * Registers client-side paintbrush commands with the given dispatcher.
+     * Handles filter, block-toggle, and debug subcommands for runtime client preferences.
+     *
+     * @param commandName the command name to register (paintbrush or pb)
+     * @param dispatcher  the command dispatcher to register with
+     */
+    private void configureClientCommand(String commandName, CommandDispatcher<FabricClientCommandSource> dispatcher) {
         dispatcher.register(ClientCommandManager.literal(commandName)
+                .then(ClientCommandManager.literal("filter")
+                        .executes(this::showFilterState)
+                        .then(ClientCommandManager.literal("toggle")
+                                .executes(this::toggleFilterFoliage)))
+                .then(ClientCommandManager.literal("blocktoggles")
+                        .executes(this::showBlockTogglesState)
+                        .then(ClientCommandManager.literal("toggle")
+                                .executes(this::toggleBlockToggles)))
                 .then(ClientCommandManager.literal("debug")
                         .executes(this::toggleTokenizerDebugOutput)
-                    .then(ClientCommandManager.literal("showTokens")
-                            .executes(this::showLoadedTokens)))
+                        .then(ClientCommandManager.literal("showTokens")
+                                .executes(this::showLoadedTokens))
+                        .then(ClientCommandManager.literal("showFamily")
+                                .executes(this::showFamily)))
         );
     }
 
-    private int showLoadedTokens(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
-    {
-        StringBuilder builder = new StringBuilder("Paintbrush - Reserved names :\n");
+    /**
+     * Shows the current foliage filtering state to the player.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int showFilterState(CommandContext<FabricClientCommandSource> context) {
+        var player = context.getSource().getPlayer();
 
-        for (String reserved : TokenRegistry.RESERVED_TOKENS)
-        {
-            builder.append(reserved)
-                    .append("\n");
+        if (player != null) {
+            sendToggleMessage(player, "Foliage filtering", PaintbrushConfig.FILTER_FOLIAGE);
         }
-
-        LOGGER.info(builder.toString());
-
-        builder = new StringBuilder("Paintbrush - Tokens :\n");
-
-        for (String token : TokenRegistry.TOKENS)
-        {
-            builder.append(token)
-                    .append("\n");
-        }
-
-        LOGGER.info(builder.toString());
 
         return Command.SINGLE_SUCCESS;
     }
 
-    private int toggleTokenizerDebugOutput(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException
-    {
+    /**
+     * Toggles the foliage filtering setting and saves the configuration.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int toggleFilterFoliage(CommandContext<FabricClientCommandSource> context) {
+        PaintbrushConfig.FILTER_FOLIAGE = !PaintbrushConfig.FILTER_FOLIAGE;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            sendToggleMessage(player, "Foliage filtering", PaintbrushConfig.FILTER_FOLIAGE);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Shows the current block-toggle suppression state to the player.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int showBlockTogglesState(CommandContext<FabricClientCommandSource> context) {
+        var player = context.getSource().getPlayer();
+
+        if (player != null) {
+            sendToggleMessage(player, "Block toggle suppression", PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggles block-toggle suppression, persists the setting, and re-syncs it to the server.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int toggleBlockToggles(CommandContext<FabricClientCommandSource> context) {
+        PaintbrushConfig.DISABLE_BLOCK_TOGGLES = !PaintbrushConfig.DISABLE_BLOCK_TOGGLES;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            syncBlockToggles(player);
+            sendToggleMessage(player, "Block toggle suppression", PaintbrushConfig.DISABLE_BLOCK_TOGGLES);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggles tokenizer debug output for the brush held in the main hand.
+     * When enabled, tokenizer matching will be logged for debugging purposes.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int toggleTokenizerDebugOutput(CommandContext<FabricClientCommandSource> context) {
 
         var player = context.getSource().getPlayer();
 
-        if (player != null)
-        {
+        if (player != null) {
             var itemStack = player.getMainHandStack();
 
             // Set internal NBT for block material and state
@@ -217,5 +387,277 @@ public class PaintbrushClient implements ClientModInitializer
         }
 
         return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Displays all loaded tokens and reserved names to the log.
+     * Useful for debugging tokenizer matching behaviour.
+     *
+     * @param ignoredContext the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int showLoadedTokens(CommandContext<FabricClientCommandSource> ignoredContext) {
+        StringBuilder builder = new StringBuilder("Paintbrush - Reserved names :\n");
+
+        for (String reserved : TokenRegistry.RESERVED_TOKENS) {
+            builder.append(reserved)
+                    .append("\n");
+        }
+
+        LOGGER.info(builder.toString());
+
+        builder = new StringBuilder("Paintbrush - Tokens :\n");
+
+        for (String token : TokenRegistry.TOKENS) {
+            builder.append(token)
+                    .append("\n");
+        }
+
+        LOGGER.info(builder.toString());
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Shows information about the block family of the targeted block.
+     * Displays the block ID, family root, family size, and family group.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int showFamily(CommandContext<FabricClientCommandSource> context) {
+        var player = context.getSource().getPlayer();
+        if (player == null) return Command.SINGLE_SUCCESS;
+
+        var client = MinecraftClient.getInstance();
+        var hitResult = player.raycast(20.0D, client.getTickDelta(), false);
+
+        if (hitResult.getType() != HitResult.Type.BLOCK) {
+            player.sendMessage(Text.literal("Paintbrush: No block targeted.").formatted(Formatting.RED));
+            return Command.SINGLE_SUCCESS;
+        }
+
+        var blockPos = ((BlockHitResult) hitResult).getBlockPos();
+        var blockState = player.getWorld().getBlockState(blockPos);
+        var block = blockState.getBlock();
+        var family = FamilyRegistry.BLOCKS.getFamily(block);
+        var blockId = Registries.BLOCK.getId(block).toString();
+
+        if (family == null) {
+            var message = Text.empty()
+                    .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                    .append(Text.literal(blockId + " has no family").formatted(Formatting.GRAY));
+
+            player.sendMessage(message);
+            LOGGER.info("Paintbrush - Family debug: block={} family=none", blockId);
+            return Command.SINGLE_SUCCESS;
+        }
+
+        var familyRootId = Registries.BLOCK.getId(family.getRoot()).toString();
+        var groupDescription = FamilyGroupRegistry.describe(block).orElse("none");
+
+        var message = Text.empty()
+                .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                .append(Text.literal(blockId + " family=" + familyRootId + " members=" + family.getMembers().size() + " group=" + groupDescription).formatted(Formatting.GRAY));
+
+        player.sendMessage(message);
+        LOGGER.info("Paintbrush - Family debug: block={} family={} members={} group={}", blockId, familyRootId, family.getMembers().size(), groupDescription);
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Shows the current paint knife settings to the player.
+     *
+     * @param player the player to notify
+     */
+    private void showPaintKnifeSettings(PlayerEntity player) {
+        sendToggleMessage(player, "Paintknife block deletion", PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE);
+        sendToggleMessage(player, "Paintknife block append", PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
+        sendValueMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS.name());
+        sendToggleMessage(player, "Paintknife debug", PaintbrushConfig.PAINTKNIFE_DEBUG);
+    }
+
+    /**
+     * Requests a paint knife from the server and prints the current settings.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int givePaintKnife(CommandContext<FabricClientCommandSource> context) {
+        ClientPlayNetworking.send(GIVE_PAINT_KNIFE_PACKET_ID, PacketByteBufs.create());
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            showPaintKnifeSettings(player);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggles both paint knife operations and saves the configuration.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int togglePaintKnifeOperations(CommandContext<FabricClientCommandSource> context) {
+        var enable = !(PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE && PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
+        PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE = enable;
+        PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND = enable;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) showPaintKnifeSettings(player);
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggles the paint knife block deletion setting and saves the configuration.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int togglePaintKnifeDelete(CommandContext<FabricClientCommandSource> context) {
+        PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE = !PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            sendToggleMessage(player, "Paintknife block deletion", PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggles the paint knife block append setting and saves the configuration.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int togglePaintKnifeAppend(CommandContext<FabricClientCommandSource> context) {
+        PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND = !PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            sendToggleMessage(player, "Paintknife block append", PaintbrushConfig.PAINTKNIFE_ALLOW_APPEND);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggles whether the paint knife promotes max-layer blocks to full blocks and saves the configuration.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int cyclePaintKnifeFullBlocks(CommandContext<FabricClientCommandSource> context) {
+        PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS = PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS.next();
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            sendValueMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS.name());
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Sets the paint knife full-block promotion mode and saves the configuration.
+     *
+     * @param context the command context
+     * @param mode    the full-block promotion mode to set
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int setFullBlocks(CommandContext<FabricClientCommandSource> context, FullBlockMode mode) {
+        PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS = mode;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            sendValueMessage(player, "Paintknife full blocks", PaintbrushConfig.PAINTKNIFE_FULL_BLOCKS.name());
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggles paint knife debug output and saves the configuration.
+     *
+     * @param context the command context
+     * @return 1 if successful
+     */
+    @SuppressWarnings("SameReturnValue")
+    private int togglePaintKnifeDebug(CommandContext<FabricClientCommandSource> context) {
+        PaintbrushConfig.PAINTKNIFE_DEBUG = !PaintbrushConfig.PAINTKNIFE_DEBUG;
+        PaintbrushConfig.save();
+
+        var player = context.getSource().getPlayer();
+        if (player != null) {
+            sendToggleMessage(player, "Paintknife debug", PaintbrushConfig.PAINTKNIFE_DEBUG);
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Converts a LayerChangeResult outcome into a human-readable string for debugging.
+     *
+     * @param result the layer change result to describe
+     * @return a string representation of the outcome
+     */
+    private String describePaintKnifeOutcome(LayerChangeResult result) {
+        return switch (result.outcome()) {
+            case SENT -> "SENT";
+            case NO_TARGET -> "NO_TARGET";
+            case UNCHANGED -> "UNCHANGED";
+            case OUT_OF_BOUNDS -> "OUT_OF_BOUNDS";
+        };
+    }
+
+    /**
+     * Sends a formatted toggle state message to the player.
+     *
+     * @param player  the player to send the message to
+     * @param label   the label describing what was toggled
+     * @param enabled true if the feature is enabled, false otherwise
+     */
+    private void sendToggleMessage(PlayerEntity player, String label, boolean enabled) {
+        var message = Text.empty()
+                .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                .append(Text.literal(label + " ").formatted(Formatting.DARK_GRAY))
+                .append(Text.literal(enabled ? "enabled" : "disabled").formatted(enabled ? Formatting.GREEN : Formatting.RED));
+
+        player.sendMessage(message);
+    }
+
+    /**
+     * Sends a formatted value state message to the player.
+     *
+     * @param player the player to send the message to
+     * @param label  the label describing what was changed
+     * @param value  the new value being displayed
+     */
+    @SuppressWarnings("SameParameterValue")
+    private void sendValueMessage(PlayerEntity player, String label, String value) {
+        var message = Text.empty()
+                .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
+                .append(Text.literal(label + " ").formatted(Formatting.DARK_GRAY))
+                .append(Text.literal(value).formatted(Formatting.AQUA));
+
+        player.sendMessage(message);
     }
 }

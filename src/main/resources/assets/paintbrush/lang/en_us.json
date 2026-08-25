@@ -2,5 +2,8 @@
   "item.paintbrush.paintbrush": "Dry Paintbrush",
   "item.paintbrush.paint_knife": "Paint Knife",
   "item.paintbrush.tomato": "Tomato",
-  "itemGroup.paintbrush.paintbrush": "Paintbrush"
+  "itemGroup.paintbrush.paintbrush": "Paintbrush",
+  "paintbrush.filtering_foliage": "Filtering active",
+  "key.paintbrush.filter_foliage": "Toggle foliage filtering",
+  "category.paintbrush": "Paintbrush"
 }

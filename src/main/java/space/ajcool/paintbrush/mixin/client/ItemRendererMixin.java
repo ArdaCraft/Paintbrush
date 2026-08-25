@@ -24,15 +24,41 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import space.ajcool.paintbrush.Paintbrush;
 
 import java.util.UUID;
+
+/**
+ * Mixin for ItemRenderer to render the painted material block in the player's hand.
+ * When holding a paintbrush with a copied material, displays the block instead of the paintbrush item.
+ * Only active when the player is sneaking, or always in GUI rendering modes if hand toggle is on.
+ */
 @Environment(EnvType.CLIENT)
 @Mixin(ItemRenderer.class)
 public class ItemRendererMixin {
 
-    @Shadow @Final private BuiltinModelItemRenderer builtinModelItemRenderer;
-
+    /** Thread-local flag to prevent recursive rendering when delegating to the original renderer. */
     @Unique
     private static final ThreadLocal<Boolean> isRendering = ThreadLocal.withInitial(() -> false);
 
+    /** The builtin model renderer for rendering items. */
+    @SuppressWarnings("unused")
+    @Shadow
+    @Final
+    private BuiltinModelItemRenderer builtinModelItemRenderer;
+
+    /**
+     * Injects into renderItem to replace paintbrush rendering with the material block.
+     * Renders the copied material block instead of the paintbrush item when appropriate.
+     *
+     * @param stack           the item stack being rendered
+     * @param renderMode      the render mode (hand, first-person, GUI, etc.)
+     * @param leftHanded      whether rendering for left-handed mode
+     * @param matrices        the matrix stack for transformations
+     * @param vertexConsumers the vertex consumer provider
+     * @param light           the light level
+     * @param overlay         the overlay parameter
+     * @param model           the baked item model
+     * @param ci              the callback info for this injection
+     */
+    @SuppressWarnings("DataFlowIssue")
     @Inject(method = "renderItem(Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/render/model/json/ModelTransformationMode;ZLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;IILnet/minecraft/client/render/model/BakedModel;)V", at = @At("HEAD"), cancellable = true)
     private void onRenderItem(ItemStack stack, ModelTransformationMode renderMode, boolean leftHanded, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, int overlay, BakedModel model, CallbackInfo ci) {
 
@@ -75,7 +101,7 @@ public class ItemRendererMixin {
                         // Prevent subsequent calls from within this mixin
                         isRendering.set(true);
                         try {
-                            ((ItemRenderer)(Object)this).renderItem(newStack, renderMode, leftHanded, matrices, vertexConsumers, light, overlay, newModel);
+                            ((ItemRenderer) (Object) this).renderItem(newStack, renderMode, leftHanded, matrices, vertexConsumers, light, overlay, newModel);
                         } finally {
                             isRendering.set(false);
                         }

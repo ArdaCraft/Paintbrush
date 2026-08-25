@@ -45,3 +45,7 @@ replay_*.log
 # Ignore DevAuth tokens
 
 .devauth/microsoft_accounts.json
+microsoft_accounts.json
+
+!README.md
+*.md

@@ -11,15 +11,31 @@ import net.minecraft.util.TypedActionResult;
 import net.minecraft.world.World;
 import space.ajcool.paintbrush.entity.TomatoEntity;
 
-public class TomatoItem extends Item
-{
-    public TomatoItem(Settings settings)
-    {
+/**
+ * The Tomato item - a throwable food item similar to snowballs.
+ * When used, creates a TomatoEntity projectile and throws it.
+ */
+public class TomatoItem extends Item {
+
+    /**
+     * Creates a new TomatoItem with the given settings.
+     *
+     * @param settings the item settings
+     */
+    public TomatoItem(Settings settings) {
         super(settings);
     }
 
-    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand)
-    {
+    /**
+     * Handles throwing the tomato when the player uses the item.
+     * Creates a TomatoEntity on the server and sends it flying.
+     *
+     * @param world the world where the action occurs
+     * @param user  the player using the item
+     * @param hand  the hand the item is in
+     * @return a typed action result indicating success
+     */
+    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
         ItemStack itemStack = user.getStackInHand(hand);
         world.playSound(null, user.getX(), user.getY(), user.getZ(), SoundEvents.ENTITY_SNOWBALL_THROW, SoundCategory.NEUTRAL, 0.5f, 0.4f / (world.getRandom().nextFloat() * 0.4f + 0.8f));
 

@@ -1,7 +1,9 @@
 # Conquest Reforged Paintbrush
+![Minecraft 1.20.1](https://img.shields.io/badge/Minecraft-1.20.1-62b47a?style=flat-square)
+![Fabric](https://img.shields.io/badge/Fabric-loader-dbb66e?style=flat-square)
+[![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey?style=flat-square)](https://creativecommons.org/licenses/by/4.0/)
 
-Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to "copy" and "paste" the material of a block onto another block while maintaining it's variant and properties. It also adds a paintknife which allows the user to change the layer properties of a targeted block.
-Usage
+Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to "copy" and "paste" the material of a block onto another block while maintaining its variant and properties. It also adds a paint knife which allows the user to change the layer properties of a targeted block.
 
 ## Usage
 
@@ -10,17 +12,47 @@ Usage
 ### Primary click:
 
 - With a **paintbrush** to copy the targeted block's material to the **paintbrush**.
-- With a **paintknife** will decrease the layer of a targeted block if it has layer properties.
+- With a **paint knife** will decrease the layer of a targeted block if it has layer properties.
+- With a **paint knife** on a layer-1 block will remove it when paint knife deletion is enabled.
 
 ### Secondary click:
 
-- With a **paintbrush** to paint the selected material onto the targeted block. This attempts to find the same block variant in a material's conquest family (see [Configuration](#Configuration)).
-- With a **paintknife** will increase the layer of a targeted block if it has layer properties.
+- With a **paintbrush** to paint the selected material onto the targeted block. This attempts to find the same block variant in a material's Conquest family, including configured linked family groups such as logs, branches, and beams (see [Configuration](#configuration)).
+- With a **paint knife** will increase the layer of a targeted block if it has layer properties.
+- With a **paint knife** on a near-full layer/slab block will promote it to the full block in the same Conquest family when full-block promotion is enabled.
+- With a **paint knife** on a full block will append a layer-1 slab in the clicked adjacent space when paint knife append is enabled and the target space is replaceable.
 
 ### Hold "Left Ctrl":
 
 - With a **paintbrush** while selecting a material to select in strict mode. All painted blocks will be an exact copy.
-- With a **paintknife** will change layers for a block adjacent to the blockface targeted.
+- With a **paint knife** will change layers for a block adjacent to the blockface targeted.
+
+### Paint knife commands
+
+- `paintknife` or `pk` gives a paint knife and shows the current paint knife settings.
+- `paintknife toggle` or `pk toggle` toggles both paint knife settings together.
+- `paintknife delete` or `pk delete` toggles layer-1 block deletion.
+- `paintknife append` or `pk append` toggles appending layer-1 slabs from full blocks.
+- `paintknife fullblocks` or `pk fullblocks` cycles full-block promotion mode between `ALL`, `PARTIAL`, and `NONE` (default `PARTIAL`); `paintknife fullblocks <all|partial|none>` or `pk fullblocks <all|partial|none>` sets it directly.
+
+### Paintbrush filtering
+
+- Press `N` to toggle foliage filtering.
+- `paintbrush filter` or `pb filter` shows whether foliage filtering is enabled.
+- `paintbrush filter toggle` or `pb filter toggle` toggles foliage filtering.
+
+When foliage filtering is enabled, filtered blocks are invisible to the paintbrush and paint knife while either tool is held: the crosshair, copy action, paint action, and paint knife target pass through matching states to the next non-filtered block in reach. Broad paintbrush strokes still skip any filtered states inside the painted volume, so grass, leaves, bushes, branches, saplings, and flowers are not modified. Filter entries are loaded from [paintbrush-filter.json](src/main/resources/assets/paintbrush/paintbrush-filter.json) and may be either lower-cased substrings matched against `BlockState.toString()` or block tags in `#namespace:id` form resolved through the synced block registry. Missing tags match nothing.
+
+Paint knife deletion and append settings default to disabled, full-block promotion defaults to enabled, and foliage filtering defaults to disabled. They are stored in `config/paintbrush.json`:
+
+```json
+{
+  "paintknifeAllowDelete": false,
+  "paintknifeAllowAppend": false,
+  "paintknifeAllowFullBlocks": true,
+  "filterFoliage": false
+}
+```
 
 **Crouching** will show the material that is currently selected on a paintbrush.
 
@@ -34,6 +66,50 @@ Given Conquest naming structure, relevant tokens are identified by declaring the
 Some blocks may contain a matching token in their names : `Red Brown Vertical Wood Plank Vertical Slab` will resolve as `Vertical`, `Vertical` and `Slab`. The **reserved_names** section of the json file exists to manage this cases. Adding `Red Brown Vertical Wood Plank` to this section will resolve as `Vertical` and `Slab`.
 
 The tokens.json file supports expansion using `( )`, any characters in parenthesis will resolve into two distinct tokens or reserved name : `board(s)` expands into `board` and `boards`  
+
+### Linked family groups
+
+Some Conquest materials are split across multiple block families even though they are the same material in different shapes. For example, logs, branches, and beams can each have their own family. Paintbrush can link these families through [family-groups.json](src/main/resources/assets/paintbrush/family-groups.json), so selecting one shape can paint the corresponding shape in a sibling family.
+
+```json
+{
+  "groups": [
+    {
+      "name": "wood_logs_branches_beams",
+      "families": [
+        {
+          "id": "logs",
+          "anchors": [
+            "conquest:{material}_log_vertical_slab",
+            "conquest:{material}_log_slab",
+            "conquest:{material}_log_pillar"
+          ]
+        },
+        {
+          "id": "branches",
+          "anchors": [
+            "conquest:{material}_branch_tip",
+            "conquest:thick_diagonal_{material}_branch_22"
+          ]
+        },
+        {
+          "id": "beams",
+          "anchors": [
+            "conquest:{material}_wood_beam_wall",
+            "conquest:{material}_wood_beam"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Each family entry has a display `id` and one or more concrete block-id `anchors`. Anchors are matched against any member of a family, not the family root, because Conquest family roots are registration-order artifacts. `{material}` captures the material name and is substituted into the target family's anchors. For example, when painting with a birch log material over an oak branch, Paintbrush can redirect from the birch log family to the birch branch family before the normal token matching runs.
+
+Anchors without `{material}` are allowed and match literal block ids. This lets resource packs link one-off families without adding code.
+
+The included `family-groups.json` links wood logs, branches, and beams. Verify custom resource-pack changes in-game with `/pb debug showFamily`, then reload resources with `F3+T`.
 
 ### Debug commands
 
@@ -53,6 +129,8 @@ The tokens.json file supports expansion using `( )`, any characters in parenthes
 ```
 
 - `pb debug showTokens` or `paintbrush debug showTokens` logs the current loaded tokens and reserved names in the console.
+
+- `pb debug showFamily` or `paintbrush debug showFamily` logs and chats the targeted block id, its family root id, member count, linked family group match, and the anchor member that matched. Use this when authoring `family-groups.json`.
 
 ### Developers Notes
 
