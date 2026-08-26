@@ -56,17 +56,28 @@ public final class PaintbrushNaming
         }
 
         var localName = Text.translatable(blockState.getBlock().getTranslationKey());
-        var name = Text.empty()
-                .append(localName)
-                .append(" Paintbrush")
+        var name = Text.translatable("paintbrush.item.name", localName)
                 .formatted(iHaveAState ? Formatting.RED : Formatting.AQUA);
 
         if (paintNbt.contains("size"))
         {
             var size = paintNbt.getInt("size");
-            if (size > 1) name.append(Text.literal(" (" + size + ")").formatted(Formatting.GRAY));
+            if (size > 1) name.append(Text.translatable("paintbrush.item.size_suffix", size).formatted(Formatting.GRAY));
         }
 
         return name;
+    }
+
+    /**
+     * Adds the standard Paintbrush chat prefix to a player-facing message body.
+     *
+     * @param body the message body to append after the prefix
+     * @return the prefixed message
+     */
+    public static MutableText prefixedMessage(Text body)
+    {
+        return Text.empty()
+                .append(Text.translatable("paintbrush.prefix").formatted(Formatting.DARK_AQUA))
+                .append(body);
     }
 }

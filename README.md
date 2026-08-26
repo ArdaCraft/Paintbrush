@@ -38,8 +38,7 @@ Conquest Reforged Paintbrush adds a creative paintbrush that allows the user to 
 ### Paintbrush filtering
 
 - Press `N` to toggle foliage filtering.
-- `paintbrush filter` or `pb filter` shows whether foliage filtering is enabled.
-- `paintbrush filter toggle` or `pb filter toggle` toggles foliage filtering.
+- `paintbrush filter` or `pb filter` toggles foliage filtering.
 
 When foliage filtering is enabled, filtered blocks are invisible to the paintbrush and paint knife while either tool is held: the crosshair, copy action, paint action, and paint knife target pass through matching states to the next non-filtered block in reach. Broad paintbrush strokes still skip any filtered states inside the painted volume, so grass, leaves, bushes, branches, saplings, and flowers are not modified. Filter entries are loaded from [paintbrush-filter.json](src/main/resources/assets/paintbrush/paintbrush-filter.json) and may be either lower-cased substrings matched against `BlockState.toString()` or block tags in `#namespace:id` form resolved through the synced block registry. Missing tags match nothing.
 

@@ -131,6 +131,13 @@ public class PaintKnifeItem extends Item {
                     && value == minValue(layerProp)
                     && !layerProp.getName().equals("level")) {
                 if (!PaintbrushConfig.PAINTKNIFE_ALLOW_DELETE) return null;
+
+                var family = FamilyRegistry.BLOCKS.getFamily(state.getBlock());
+                if (family.getMembers().isEmpty()
+                        || buildLayerState(family, direction, value) == null) {
+                    return null;
+                }
+
                 return new LayerChange(pos, Blocks.AIR.getDefaultState());
             }
 

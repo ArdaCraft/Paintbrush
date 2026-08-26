@@ -141,7 +141,7 @@ public class Paintbrush implements ModInitializer {
             var airBrush = PAINTBRUSH_ITEM.getDefaultStack();
             var paintNbt = airBrush.getOrCreateSubNbt("paintbrush");
             paintNbt.put("state", NbtHelper.fromBlockState(Blocks.AIR.getDefaultState()));
-            var name = Text.empty().append("Air Paintbrush").formatted(Formatting.RED);
+            var name = Text.translatable("paintbrush.item.name", Text.translatable(Blocks.AIR.getTranslationKey())).formatted(Formatting.RED);
             airBrush.setCustomName(name);
             itemGroup.add(airBrush);
             itemGroup.add(TOMATO_ITEM.getDefaultStack());
@@ -207,9 +207,10 @@ public class Paintbrush implements ModInitializer {
                     if (!canBreak) {
                         LOGGER.warn("Blocked paintbrush:set_block for player={} pos={} state={}",
                                 player.getName().getString(), queuedBlock.pos(), blockState);
-                        var errorMessage = Text.empty()
-                                .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                                .append(Text.literal("Blocked by protection at " + queuedBlock.pos().toShortString() + ".").formatted(Formatting.DARK_GRAY));
+                        var errorMessage = PaintbrushNaming.prefixedMessage(Text.translatable(
+                                "paintbrush.message.blocked_by_protection",
+                                Text.literal(queuedBlock.pos().toShortString()).formatted(Formatting.GRAY)
+                        ).formatted(Formatting.DARK_GRAY));
 
                         player.sendMessage(errorMessage);
                         return;
@@ -222,9 +223,8 @@ public class Paintbrush implements ModInitializer {
                     var firstEntry = brushedBlocks.entrySet().iterator().next();
                     LOGGER.warn("Dropped paintbrush:set_block for player={} reason=no_worldedit_session pos={} state={}",
                             player.getName().getString(), firstEntry.getKey(), firstEntry.getValue());
-                    var errorMessage = Text.empty()
-                            .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                            .append(Text.literal("No WorldEdit session - edit dropped.").formatted(Formatting.DARK_GRAY));
+                    var errorMessage = PaintbrushNaming.prefixedMessage(Text.translatable("paintbrush.message.no_worldedit_session")
+                            .formatted(Formatting.DARK_GRAY));
 
                     player.sendMessage(errorMessage);
                     return;
@@ -268,12 +268,9 @@ public class Paintbrush implements ModInitializer {
         ServerPlayNetworking.registerGlobalReceiver(GIVE_PAINT_KNIFE_PACKET_ID, (server, player, handler, buf, responseSender) ->
                 server.execute(() ->
                 {
-                    var createdNewItem = giveOrFocusItem(player, PAINT_KNIFE_ITEM);
-                    var message = Text.empty()
-                            .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                            .append(Text.literal(createdNewItem
-                                    ? "Added a paint knife to inventory!"
-                                    : "Moved your paint knife to your hand.").formatted(Formatting.DARK_GRAY));
+                    giveItem(player, PAINT_KNIFE_ITEM);
+                    var message = PaintbrushNaming.prefixedMessage(Text.translatable("paintbrush.message.paint_knife_added")
+                            .formatted(Formatting.DARK_GRAY));
 
                     player.sendMessage(message);
                 }));
@@ -305,37 +302,13 @@ public class Paintbrush implements ModInitializer {
     }
 
     /**
-     * Puts an existing brush or knife in the player's hand, or gives a new one if none exists.
-     * Searches the player's main inventory for an existing item. If found and not in hand, swaps it
-     * to the selected slot. If not found, adds a new one to the selected slot or to the next available space.
+     * Adds a fresh brush or knife stack to the player's inventory.
      *
      * @param player the server player
-     * @param item   the item type to find or create
-     * @return true if a new item was created, false if an existing one was moved
+     * @param item   the item type to create
      */
-    public static boolean giveOrFocusItem(net.minecraft.server.network.ServerPlayerEntity player, Item item) {
-        var inventory = player.getInventory();
-        var selectedSlot = inventory.selectedSlot;
-        var selectedStack = inventory.getStack(selectedSlot);
-
-        for (int slot = 0; slot < inventory.main.size(); slot++) {
-            var stack = inventory.main.get(slot);
-            if (!stack.isOf(item)) continue;
-
-            if (slot == selectedSlot) return false;
-
-            inventory.setStack(selectedSlot, stack);
-            inventory.setStack(slot, selectedStack);
-            return false;
-        }
-
-        if (selectedStack.isEmpty()) {
-            inventory.setStack(selectedSlot, item.getDefaultStack());
-        } else {
-            inventory.insertStack(item.getDefaultStack());
-        }
-
-        return true;
+    public static void giveItem(net.minecraft.server.network.ServerPlayerEntity player, Item item) {
+        player.getInventory().insertStack(item.getDefaultStack());
     }
 
     /**
@@ -355,13 +328,11 @@ public class Paintbrush implements ModInitializer {
                         .then(CommandManager.argument("value", IntegerArgumentType.integer())
                                 .executes(this::setBrushSize)))
                 .then(CommandManager.literal("filter")
-                        .executes(ctx -> 1)
-                        .then(CommandManager.literal("toggle")
-                                .executes(ctx -> 1)))
+                        .executes(ctx -> 1))
                 .then(CommandManager.literal("blocktoggles")
-                        .executes(ctx -> 1)
-                        .then(CommandManager.literal("toggle")
-                                .executes(ctx -> 1)))
+                        .executes(ctx -> 1))
+                .then(CommandManager.literal("settings")
+                        .executes(ctx -> 1))
                 .then(CommandManager.literal("debug")
                         .executes(ctx -> 1)
                         .then(CommandManager.literal("showTokens")
@@ -383,13 +354,10 @@ public class Paintbrush implements ModInitializer {
         var player = context.getSource().getPlayer();
 
         if (player != null) {
-            var createdNewItem = giveOrFocusItem(player, PAINTBRUSH_ITEM);
+            giveItem(player, PAINTBRUSH_ITEM);
 
-            var message = Text.empty()
-                    .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                    .append(Text.literal(createdNewItem
-                            ? "Added a dry paintbrush to inventory!"
-                            : "Moved your paintbrush to your hand.").formatted(Formatting.DARK_GRAY));
+            var message = PaintbrushNaming.prefixedMessage(Text.translatable("paintbrush.message.paintbrush_added")
+                    .formatted(Formatting.DARK_GRAY));
 
             player.sendMessage(message);
         }
@@ -413,11 +381,11 @@ public class Paintbrush implements ModInitializer {
             toggleHandMode(playerUUID);
 
             boolean isHandEnabled = isHandToggleEnabled(playerUUID);
-            String message = isHandEnabled
-                    ? "Paintbrush: Now showing the material in hand."
-                    : "Paintbrush: Now only showing the material in the hotbar.";
+            var message = PaintbrushNaming.prefixedMessage(Text.translatable(isHandEnabled
+                    ? "paintbrush.message.hand_shown"
+                    : "paintbrush.message.hand_hotbar").formatted(Formatting.AQUA));
 
-            player.sendMessage(Text.literal(message).formatted(Formatting.AQUA));
+            player.sendMessage(message);
         }
 
         return Command.SINGLE_SUCCESS;
@@ -438,9 +406,8 @@ public class Paintbrush implements ModInitializer {
             int size = IntegerArgumentType.getInteger(context, "value");
 
             if (size > 5 || size < 1) {
-                var message = Text.empty()
-                        .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                        .append(Text.literal("selected size must be between 1 and 5.").formatted(Formatting.RED));
+                var message = PaintbrushNaming.prefixedMessage(Text.translatable("paintbrush.message.size_out_of_range")
+                        .formatted(Formatting.RED));
 
                 player.sendMessage(message);
 
@@ -450,9 +417,8 @@ public class Paintbrush implements ModInitializer {
             var itemStack = player.getInventory().getMainHandStack();
 
             if (!itemStack.isOf(PAINTBRUSH_ITEM)) {
-                player.sendMessage(Text.empty()
-                        .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                        .append(Text.literal("You must have a paintbrush in your main hand to set the brush size.").formatted(Formatting.RED)));
+                player.sendMessage(PaintbrushNaming.prefixedMessage(Text.translatable("paintbrush.message.size_needs_brush")
+                        .formatted(Formatting.RED)));
 
                 return 0;
             }
@@ -465,11 +431,10 @@ public class Paintbrush implements ModInitializer {
 
             context.getSource().getServer().execute(() -> player.getInventory().setStack(player.getInventory().selectedSlot, itemStack));
 
-            var message = Text.empty()
-                    .append(Text.literal("Paintbrush: ").formatted(Formatting.DARK_AQUA))
-                    .append(Text.literal("size set to").formatted(Formatting.DARK_GRAY))
-                    .append(Text.literal(" " + size).formatted(Formatting.AQUA))
-                    .append(Text.literal(".").formatted(Formatting.DARK_GRAY));
+            var message = PaintbrushNaming.prefixedMessage(Text.translatable(
+                    "paintbrush.message.size_set",
+                    Text.literal(String.valueOf(size)).formatted(Formatting.AQUA)
+            ).formatted(Formatting.DARK_GRAY));
 
             player.sendMessage(message);
         }

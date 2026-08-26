@@ -39,7 +39,10 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
-/gradle/
+/gradle/*
+!/gradle/wrapper/
+/gradle/wrapper/*
+!/gradle/wrapper/gradle-wrapper.properties
 /lib/
 
 # Ignore DevAuth tokens

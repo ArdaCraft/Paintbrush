@@ -26,6 +26,7 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import space.ajcool.paintbrush.Paintbrush;
+import space.ajcool.paintbrush.PaintbrushNaming;
 import space.ajcool.paintbrush.family.FamilyGroupRegistry;
 import space.ajcool.paintbrush.tokenizer.TokenProcessor;
 
@@ -222,19 +223,15 @@ public class PaintbrushItem extends Item {
                             net.minecraft.text.MutableText errorMessage;
 
                             if (!layerMismatch) {
-                                errorMessage = Text.empty()
-                                        .append(Text.literal("Paintbrush:").formatted(Formatting.DARK_AQUA))
-                                        .append(Text.literal(" Target model ").formatted(Formatting.DARK_GRAY))
-                                        .append(Text.literal(Registries.BLOCK.getId(targetBlock).toString()).formatted(Formatting.GRAY))
-                                        .append(Text.literal(" can not be found in the family of ").formatted(Formatting.DARK_GRAY))
-                                        .append(Text.literal(material).formatted(Formatting.GRAY))
-                                        .append(Text.literal(". ").formatted(Formatting.DARK_GRAY));
+                                errorMessage = PaintbrushNaming.prefixedMessage(Text.translatable(
+                                        "paintbrush.message.not_in_family",
+                                        Text.literal(Registries.BLOCK.getId(targetBlock).toString()).formatted(Formatting.GRAY),
+                                        Text.literal(material).formatted(Formatting.GRAY)
+                                ).formatted(Formatting.DARK_GRAY));
 
                             } else {
-                                errorMessage = Text.empty()
-                                        .append(Text.literal("Paintbrush:").formatted(Formatting.DARK_AQUA))
-                                        .append(Text.literal(" Target block layer is not supported by the selected paint material").formatted(Formatting.DARK_GRAY))
-                                        .append(Text.literal(". ").formatted(Formatting.DARK_GRAY));
+                                errorMessage = PaintbrushNaming.prefixedMessage(Text.translatable("paintbrush.message.layer_unsupported")
+                                        .formatted(Formatting.DARK_GRAY));
 
                             }
 
