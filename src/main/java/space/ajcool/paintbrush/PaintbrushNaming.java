@@ -3,10 +3,12 @@ package space.ajcool.paintbrush;
 import com.conquestrefabricated.core.item.family.FamilyRegistry;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.HolderGetter;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
@@ -23,6 +25,15 @@ public final class PaintbrushNaming
      */
     private PaintbrushNaming()
     {
+    }
+
+    public static String blockTranslationKey(Block block)
+    {
+        var blockKey = block.getDescriptionId();
+        if (Language.getInstance().has(blockKey)) return blockKey;
+
+        var item = block.asItem();
+        return item == Items.AIR ? blockKey : item.getDescriptionId();
     }
 
     /**
@@ -55,7 +66,7 @@ public final class PaintbrushNaming
                     : paintFamily.getRoot().defaultBlockState();
         }
 
-        var localName = Component.translatable(blockState.getBlock().getDescriptionId());
+        var localName = Component.translatable(blockTranslationKey(blockState.getBlock()));
         var name = Component.translatable("paintbrush.item.name", localName)
                 .withStyle(iHaveAState ? ChatFormatting.RED : ChatFormatting.AQUA);
 

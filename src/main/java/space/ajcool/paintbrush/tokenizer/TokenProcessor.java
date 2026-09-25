@@ -4,6 +4,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.network.chat.Component;
 import com.mojang.datafixers.util.Pair;
 import space.ajcool.paintbrush.Paintbrush;
+import space.ajcool.paintbrush.PaintbrushNaming;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -39,7 +40,7 @@ public class TokenProcessor {
      */
     public Pair<Block, List<String>> tokenizeBlock(Block block) {
 
-        String blockFullName = Component.translatable(block.getDescriptionId()).getString().toLowerCase();
+        String blockFullName = Component.translatable(PaintbrushNaming.blockTranslationKey(block)).getString().toLowerCase();
 
         for (String reservedName : TokenRegistry.RESERVED_TOKENS) {
 
@@ -66,7 +67,7 @@ public class TokenProcessor {
      */
     public void outputDebug(Pair<Block, List<String>> tokenizedTargetBlock, List<Pair<Block, List<String>>> tokenizedPaintFamilyBlocks) {
 
-        var blockName = Component.translatable(tokenizedTargetBlock.getFirst().getDescriptionId()).getString();
+        var blockName = Component.translatable(PaintbrushNaming.blockTranslationKey(tokenizedTargetBlock.getFirst())).getString();
 
         StringBuilder builder = new StringBuilder("Looking for match of \"")
                 .append(blockName)
@@ -80,7 +81,7 @@ public class TokenProcessor {
         for (Pair<Block, List<String>> pair : tokenizedPaintFamilyBlocks) {
 
             builder.append("- \"")
-                    .append(Component.translatable(pair.getFirst().getDescriptionId()).getString())
+                    .append(Component.translatable(PaintbrushNaming.blockTranslationKey(pair.getFirst())).getString())
                     .append("\" [")
                     .append(pair.getSecond().toString())
                     .append("]\n");
